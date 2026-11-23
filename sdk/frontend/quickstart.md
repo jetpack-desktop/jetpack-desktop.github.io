@@ -20,6 +20,7 @@ try {
   await client.connectAndEnsureApp({
     appId: 'io.jetpack.media-converter',
     daemonPort: 9470,
+    downloadUrl: 'https://github.com/jetpack-desktop/releases/releases/latest',
     controlBar: {
       appName: 'FFmpeg Media Converter',
       warnOnUnsavedWork: () => hasActiveUnsavedWork(),
@@ -47,7 +48,11 @@ try {
   console.log('Worker ready:', client.getAppId());
 } catch (err) {
   if (err instanceof JetPackClientError) {
-    console.error(`JetPack error [${err.code}]: ${err.message}`);
+    if (err.code === 'DAEMON_NOT_RUNNING') {
+      console.error(`Install or start JetPack Desktop: ${err.downloadUrl}`);
+    } else {
+      console.error(`JetPack error [${err.code}]: ${err.message}`);
+    }
   } else {
     throw err;
   }
@@ -56,12 +61,12 @@ try {
 
 ### What `connectAndEnsureApp()` Automates
 
-1. **WASM Initialization & Identity**: Loads `jetpack-wasm` and restores (or creates) `WasmClientIdentity` (`Ed25519` + `X25519` keys persisted in `localStorage`).
-2. **Authenticated WebSocket Session**: Connects to `ws://127.0.0.1:9470` and executes the `ClientHello` / `ServerHello` handshake.
-3. **Auto-Pairing (`autoPair: true`)**: If the browser origin is unpaired, generates `jetpack://pair?client_id=...&pubkey=...&origin=...`, invokes `onPairingUri(uri)`, triggers the deep link (unless `disableAutoDeepLink: true`), and polls until approved or `pairingTimeoutMs` (`60000ms` default) elapses.
+1. **Loopback Liveness & Cold-Visit Probe (`GET /health`)**: Probes `http://127.0.0.1:<daemonPort>/health` (bounded by `healthProbeTimeoutMs = 2000` by default). If `jetpack-daemon` is not installed or not running, `connectAndEnsureApp()` rejects immediately with `JetPackClientError('DAEMON_NOT_RUNNING', ..., { downloadUrl })` **without** triggering an unhandled `jetpack://pair` deep link, and updates `JetPackControlBar` to `'Error'` with a sanitized HTTPS **"Download JetPack"** link.
+2. **WASM Initialization & Identity**: Loads `jetpack-wasm` and restores (or creates) `WasmClientIdentity` (`Ed25519` + `X25519` keys persisted in `localStorage`).
+3. **Auto-Pairing (`autoPair: true`) & WebSocket Session**: If `/health` reports `origin_paired: false` (with W3C Private Network Access headers) or the initial `ClientHello` fails because the origin is unpaired, generates `jetpack://pair?client_id=...&pubkey=...&origin=...`, invokes `onPairingUri(uri)`, triggers the deep link (unless `disableAutoDeepLink: true`), and polls until approved or `pairingTimeoutMs` (`60000ms` default) elapses, then completes the encrypted `X25519` / `Ed25519` handshake on `ws://127.0.0.1:9470`.
 4. **Install & Provision Check**: Queries `list_apps()`. If `appId` is missing, resolves `ociReference` from options or `get_catalog()` (verified `SignedAppCatalog`) and runs `pull_app()`, forwarding download, extraction, and environment stages (`oci_layer`, `runtime_download`, `runtime_extract`, `uv_bootstrap`, `python_standalone`, `uv_sync`) to `onProgress` (`percent` is `number | null`).
 5. **Worker Boot**: Calls `launch_app(appId, resetVolumes, onProgress)` if the worker is not already `Running` (or attaches this WebSocket session to the running worker), forwarding any just-in-time `runtime_*` / `uv_*` / `sandbox_launch` `app.launch.progress` updates to `onProgress`.
-6. **SDK Top Control Bar (`JetPackControlBar`)**: In browser environments (unless `controlBar: false`), automatically mounts an isolated Shadow-DOM top bar displaying the JetPack logo, app name, live status pill (`Connecting`, `Running`, `Stopped`, `Error`), `"Control Center"` link, and `"Stop"` action.
+6. **SDK Top Control Bar (`JetPackControlBar`)**: In browser environments (unless `controlBar: false`), automatically mounts an isolated Shadow-DOM top bar displaying the JetPack logo, app name, live status pill (`Connecting`, `Running`, `Stopped`, `Error`), `"Control Center"` link, optional `"Download JetPack"` link (on `DAEMON_NOT_RUNNING`), and `"Stop"` action.
 
 ## 2. Send Correlated Zero-Copy Binary Requests (`request`)
 
@@ -115,13 +120,14 @@ client.close();
 
 `client.close()` shuts down the WebSocket, clears all `onStream` handlers, rejects any pending `request()` promises with `JetPackClientError('CLIENT_CLOSED', ...)`, and transitions `JetPackControlBar` to `'Stopped'`.
 
-## 4. Safe Worker Stop & Standalone `/apps/<app-id>/` Hosting
+## 4. Safe Worker Stop, Standalone `/apps/<app-id>/`, and External `https://` Hosting
 
 `JetPackControlBar` uses `attachShadow({ mode: 'open' })` so host CSS never leaks into the bar or confirmation modal, and Control Bar styles never affect your application:
 
 * **Confirmation Guard**: Clicking **Stop** opens an in-Shadow-DOM confirmation dialog whenever `warnOnUnsavedWork` evaluates to `true` (boolean or predicate callback) or `onBeforeStop` is provided (and `warnOnUnsavedWork` is not `false`).
 * **Programmatic Stop**: Call `await client.stopApp()` to send `app.terminate` (`terminate_app(appId)`) without tearing down the bar, keeping it visible with status `'Stopped'`.
-* **Standalone MPA Routes & Window Mode**: Built-in apps served by `jetpack-daemon` live at dedicated multi-page entrypoints such as `/apps/io.jetpack.media-converter/` (`http://127.0.0.1:9470/apps/io.jetpack.media-converter/`). By default (`open_in_app_window = true`), Control Center uses `client.open_url(...)` (`"ui.open_url"`) so `jetpack-daemon` opens each app (`/apps/<app-id>/`) and Control Center in its own OS-native `wry` WebView desktop window (`WKWebView` on macOS, `WebView2` on Windows, `WebKitGTK` on Linux) sharing persistent storage in `<root>/webview-data` and showing independent taskbar/window entries (with transparent default-browser fallback when running headless, or browser tabs when `"Open Dashboard & Apps in Standalone Windows"` is turned off in **My Hardware & Security**), while `jetpack-daemon` multiplexes HTTP static serving, cross-session worker attachment, and reference-counted cleanup on `127.0.0.1:9470`.
+* **Standalone MPA/SPA Routes, Dynamic `ui/` Bundles & Window Downloads**: App frontends served by `jetpack-daemon` live under `/apps/<app-id>/` (`http://127.0.0.1:9470/apps/<app-id>/`). When an installed package ships its own `ui/` folder (`<root>/apps/<app-id>/<active_version>/ui/`), `jetpack-daemon` serves that decoupled bundle directly (with canonical boundary checks, MPA `<subpath>/index.html`, and extensionless SPA fallback) before falling back to embedded Control Center assets. By default (`open_in_app_window = true`), Control Center uses `client.open_url(...)` (`"ui.open_url"`) so `jetpack-daemon` opens each app (`/apps/<app-id>/`) and Control Center in its own OS-native `wry` WebView desktop window (`WKWebView` on macOS, `WebView2` on Windows, `WebKitGTK` on Linux) sharing persistent storage in `<root>/webview-data` and supporting both standard HTTP file downloads (into the user's `Downloads` directory) and `blob:` / `data:` `<a download>` exports via a native `rfd` save-file dialog (with transparent default-browser fallback when running headless, or browser tabs when `"Open Dashboard & Apps in Standalone Windows"` is turned off in **My Hardware & Security**), while `jetpack-daemon` multiplexes HTTP static serving, cross-session worker attachment, and reference-counted cleanup on `127.0.0.1:9470`.
+* **External `https://` Domains & `CatalogAppEntry.launch_url`**: Third-party web frontends hosted on developer domains (e.g., Vercel, Cloudflare Pages, or a custom `https://` site) connect seamlessly to `http://127.0.0.1:9470/health` and `ws://127.0.0.1:9470` thanks to W3C Private Network Access (`Access-Control-Allow-Private-Network: true`) and canonical `Origin` normalization in `paired_clients.db`. When an `Ed25519`-signed `SignedAppCatalog` entry specifies `launch_url` (an `https://` URL—or loopback `http://` for local development—whose normalized origin is listed in `allowed_origins`), Control Center, the system tray **Launch / Open** menu, and `ui.open_url` open that external URL directly in a dedicated OS-native `wry` window (`WKWebView` with `NSAllowsLocalNetworking` on macOS, `WebView2` on Windows, `WebKitGTK` on Linux) or default browser tab instead of `/apps/<app-id>/`. Both navigation and `window.open` handlers inside `wry` intercept `jetpack://pair` deep links cleanly without error pages.
 
 ## 5. Developer Mode Live Log Terminal (`JetPackLogTerminal`)
 

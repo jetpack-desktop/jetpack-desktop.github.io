@@ -7,7 +7,7 @@ description: >-
 
 # CLI Tools Reference
 
-JetPack provides two complementary binaries:
+JetPack provides two complementary binaries, both built together by `make release-daemon` and included in every release bundle (`JetPack.app/Contents/MacOS/` on macOS, `JetPack-windows-x64.zip` on Windows, and `JetPack-linux-x64.tar.gz` on Linux):
 
 * **`jetpack`** (`crates/jetpack-cli`) — Standalone console developer CLI for scaffolding AI-ready projects, running the local MCP server (`stdio`), generating TypeScript opcode contracts, validating manifests, and driving local installs/packaging.
 * **`jetpack-daemon`** (`crates/jetpack-daemon`) — Native system-tray orchestrator and catalog operator binary.
@@ -58,13 +58,13 @@ Validates `app.toml` (defaults to `app.toml` in the current directory, or `<dir>
 jetpack validate ./workers/my-ocr-worker/app.toml
 ```
 
-### `jetpack install-local [path]`
+### `jetpack install-local` (`path`)
 
-Delegates to `jetpack-daemon --install-local-app <path>` to package and install a local developer worker directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`, restricted to `127.0.0.1` / `localhost`). Defaults `path` to `.`.
+Delegates to `jetpack-daemon --install-local-app <path>` to package and install a local developer worker (including any built `ui/` static directory) directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`, restricted to `127.0.0.1` / `localhost`). Defaults `path` to `.`.
 
-### `jetpack package [path] --out <bundle_dir> [--oci-ref <ref>]`
+### `jetpack package` (`path --out <bundle_dir> --oci-ref <ref>`)
 
-Delegates to `jetpack-daemon --package-app` to package a validated project into an OCI Image Layout v1.0.0 bundle (automatically excluding `AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.agents/`, `jetpack-env.d.ts`, `.git/`, `.venv/`, and secret files). Defaults `path` to `.`.
+Delegates to `jetpack-daemon --package-app` to package a validated project—alongside its built `ui/` static frontend (`ui/index.html`, `ui/assets/*`) if present—into an OCI Image Layout v1.0.0 bundle (automatically excluding `AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.agents/`, `jetpack-env.d.ts`, `node_modules/`, `target/`, `.git/`, `.venv/`, `__pycache__/`, symlinks, and secret files). Defaults `path` to `.`.
 
 ***
 
@@ -96,18 +96,18 @@ jetpack-daemon --validate-manifest ./workers/my-ocr-worker/app.toml
 
 ### `--install-local-app <source_dir>`
 
-Validates, packages, and installs a local developer worker directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`):
+Validates, packages, and installs a local developer worker (plus any `ui/` bundle) directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`):
 
 ```bash
 jetpack-daemon --install-local-app ./workers/my-ocr-worker
 ```
 
 * Blocks official `SignedAppCatalog` IDs (`APP_SPOOFING_DETECTED`).
-* Displays the app with an `UNVERIFIED / LOCAL DEV` badge in Control Center and restricts WebSocket origins to `127.0.0.1` / `localhost`.
+* Displays the app with an `UNVERIFIED / LOCAL DEV` badge in Control Center, automatically discovers `<root>/apps/<app-id>/<version>/ui/index.html` for `/apps/<app-id>/`, and restricts WebSocket origins to `127.0.0.1` / `localhost`.
 
 ### `--package-app <source_dir> --out <bundle_dir> [--oci-ref <ref>]`
 
-Packages a validated worker directory into a standards-compliant **OCI Image Layout v1.0.0** directory and outputs `manifest_sha256` plus a `CatalogAppEntry` JSON snippet:
+Packages a validated worker directory (including optional `ui/` static assets served dynamically at `/apps/<app-id>/`) into an ORAS-compatible **OCI Image Layout v1.0.0** directory (`index.json` with `org.opencontainers.image.ref.name`) and prints `manifest_sha256`, the `oras cp --from-oci-layout` push command, `oras manifest fetch --descriptor` digest check, and a `CatalogAppEntry` JSON snippet:
 
 ```bash
 jetpack-daemon \
@@ -116,7 +116,7 @@ jetpack-daemon \
   --oci-ref ghcr.io/your-org/my-ocr-worker:0.1.0
 ```
 
-Automatically strips `*.key`, `*.pem`, `*.secret`, `jetpack-root-signing*`, `.git/`, `.venv/`, and `__pycache__/` so secrets cannot leak into published layers.
+Automatically strips `*.key`, `*.pem`, `*.secret`, `jetpack-root-signing*`, `node_modules/`, `target/`, `.git/`, `.venv/`, `__pycache__/`, and symlinks so build caches, secrets, and unsafe links cannot leak into published layers.
 
 ## Catalog Operator Commands
 
@@ -155,6 +155,7 @@ jetpack-daemon --sign-catalog crates/jetpack-daemon/assets/catalog.signed.json -
 | `--test-ws-client` | Connect to a running daemon (`127.0.0.1:9470`) to verify PNA, handshake, and `system.echo` (supports `--send-json` and `--origin`). |
 | `--ws-smoke-test` | Run offline end-to-end WebSocket security and `hardware.get_profile` smoke test. |
 | `--oci-smoke-test` | Run offline OCI CAS, SHA-256 verification, and hardlink/APFS clone smoke test. |
+| `--oci-remote-smoke-test <ref> [--expected-digest <sha256:...>]` | Pull a live public OCI reference (such as `ghcr.io/...`), verify manifest + blob SHA-256 digests, and safely unpack into an isolated temporary CAS root. |
 | `--python-smoke-test` | Run offline hermetic `uv` + `python-build-standalone` provisioner smoke test. |
 | `--sandbox-smoke-test` | Run offline OS native kernel sandbox (`AppContainer` / `Seatbelt` / `bwrap+Landlock`) smoke test. |
 | `--worker-ipc-smoke-test` | Run offline sandboxed worker IPC, userspace proxy, and lifecycle cleanup smoke test. |

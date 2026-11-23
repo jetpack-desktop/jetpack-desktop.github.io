@@ -68,7 +68,8 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
                                        v
 +-----------------------------------------------------------------------------+
 | Tier 2: Rust Tray Gatekeeper (jetpack-daemon)                               |
-|   - Embedded Control Center HTTP server (http://127.0.0.1:9470)             |
+|   - Dynamic installed app UI (<root>/apps/<app-id>/<version>/ui/) &       |
+|     embedded Control Center HTTP server (http://127.0.0.1:9470)             |
 |   - ChaCha20-Poly1305 encrypted paired client & volume store (OS Vault key) |
 |   - Ed25519 SignedAppCatalog verifier & anti-spoofing enforcer              |
 |   - Hardware Discovery (NVML / Vulkan / DX12 / Metal / sysctl)              |
@@ -91,11 +92,13 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
 
 ### Tier 1: WASM Frontend (`jetpack-wasm` & `@jetpack/client`)
 
-Web applications (including standalone MPA apps hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
+Web applications (including standalone MPA/SPA UIs hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
 
 ### Tier 2: Rust Tray Gatekeeper (`jetpack-daemon`)
 
-`jetpack-daemon` is a lightweight native binary (`~5–10 MB`) managing the system tray icon (`tao` + `tray-icon`), the loopback HTTP/WebSocket server on `127.0.0.1:9470` (serving Control Center, standalone `/apps/<app-id>/` pages, and cross-session worker fan-out/reference-counted teardown), hardware discovery, OCI bundle caching (including slim single-example release seeding), isolated Python/native runtime provisioning, native OS dialogs (`rfd`), sanitized diagnostic bundle export/reporting (`diagnostics`), SHA-256-verified self-updates (`updater`), and worker lifecycle supervision.
+`jetpack-daemon` is a lightweight native binary (`~5–10 MB`) managing the system tray icon (`tao` + `tray-icon`), native `wry` WebView windows (with cross-platform `download_started`/`download_completed` handlers and a `blob:`/`data:` `rfd` save-dialog IPC bridge for `<a download>` and diagnostic `.zip` exports), the loopback HTTP/WebSocket server on `127.0.0.1:9470`, hardware discovery, OCI bundle caching (including slim single-example release seeding), isolated Python/native runtime provisioning, native OS dialogs (`rfd`), sanitized diagnostic bundle export/reporting (`diagnostics`), SHA-256-verified self-updates (`updater`), and worker lifecycle supervision.
+
+For `/apps/<app-id>/` HTTP requests, `jetpack-daemon` checks `<root>/apps/<app-id>/<active_version>/ui/` first (enforcing path canonicalization and symlink-escape rejection, with MPA `<subpath>/index.html` and extensionless SPA fallback to `ui/index.html`) and falls back to the cascading Control Center bundle (`JETPACK_WEB_DIST_DIR`, `<root>/ui/dist/`, `./web/dist/`, embedded `ControlCenterAssets`) only when `<app-dir>/ui/` does not exist.
 
 No browser client ever communicates directly with a worker socket or pipe. `jetpack-daemon` decrypts incoming WebSocket frames, authorizes the session `Origin` against the target application, and forwards plaintext hybrid frames over local kernel IPC only to the authorized worker job.
 
@@ -105,8 +108,8 @@ Each launched job executes inside a dedicated per-job workspace (`<root>/workspa
 
 * `JETPACK_IPC_ENDPOINT`: local Unix Domain Socket (`ipc.sock`) or Windows Named Pipe (`\\.\pipe\jetpack-worker-<job_id>`).
 * `JETPACK_PROXY_ENDPOINT` / `HTTP_PROXY` / `ALL_PROXY`: userspace network proxy endpoint when `permissions.network_allowlist` is non-empty.
-* `JETPACK_VOL_<NAME>`: sandbox-mounted paths for user-selected host folders declared in `[volumes.<name>]`.
-* Hermetic `PATH` prepended with `<root>/runtimes/<name>-<version>/bin` for declared `[runtimes]` dependencies.
+* `JETPACK_VOL_<NAME>`: sandbox-mounted paths for user-selected host folders declared in `volumes.<name>`.
+* Hermetic `PATH` prepended with `<root>/runtimes/<name>-<version>/bin` for declared `runtimes` dependencies.
 
 ## User-Space Directory Layout (`JetPackPaths`)
 
@@ -123,12 +126,13 @@ You can override the root directory hermetically for testing or portable install
 ```text
 <JETPACK_ROOT>/
 ├── config/
-│   ├── daemon.toml              # Daemon bind address, port, logging, [updates], and [diagnostics] configuration
+│   ├── daemon.toml              # Daemon bind address, port, logging, updates, and diagnostics configuration
 │   ├── paired_clients.db        # ChaCha20-Poly1305 AEAD encrypted SQLite DB (paired clients, authorized_volumes, settings)
 │   └── pairing.ipc              # Local IPC socket/metadata for single-instance URI forwarding
 ├── logs/
 │   ├── daemon.log               # Persistent UTF-8 tracing log (redacted in diagnostic exports)
 │   └── jetpack-diagnostics-*.zip# Optional user-exported sanitized diagnostic bundles
+├── webview-data/                # Persistent wry WebView storage (localStorage pairing keys & cache)
 ├── blobs/
 │   └── sha256/
 │       ├── <hex>                # Content-Addressable OCI layer/config/manifest blobs
@@ -138,7 +142,7 @@ You can override the root directory hermetically for testing or portable install
 │   ├── python/                  # Managed python-build-standalone distributions
 │   └── <name>-<version>/bin/    # Verified shared native runtimes (e.g., ffmpeg-9.0.2)
 ├── apps/
-│   └── <app-id>/<version>/      # Deduplicated app bundles (hardlinks / APFS clones) + .venv
+│   └── <app-id>/<version>/      # Deduplicated app bundles (hardlinks / APFS clones), optional ui/ static bundle, and .venv
 ├── workspaces/
 │   └── job_<uuid>/              # Ephemeral per-job sandbox RW directory + ipc.sock
 ├── updates/                     # Verified release downloads, SHA256SUMS.txt, and staging dirs (mode 0700)
@@ -182,9 +186,9 @@ This guide walks through building `jetpack-daemon`, inspecting your host hardwar
   * **macOS (`darwin/arm64`)**: Apple Silicon with Xcode Command Line Tools (`Metal.framework` is detected automatically).
   * **Linux (`linux/amd64`)**: `bubblewrap` (`bwrap`) installed with unprivileged user namespaces enabled, plus a kernel supporting Landlock LSM (`Linux 5.13+`).
 
-## 1. Build the Daemon and Embedded Control Center
+## 1. Build the Daemon, CLI, and Embedded Control Center
 
-Build the WASM client, compile the Control Center frontend (`web/dist/`), and produce the single `jetpack-daemon` release binary:
+Build the WASM client, compile the Control Center frontend (`web/dist/`), and produce both `jetpack-daemon` and the `jetpack` CLI (including `jetpack mcp`) release binaries:
 
 ```bash
 make web-install
@@ -307,7 +311,60 @@ The standalone console CLI `jetpack` (`crates/jetpack-cli`) includes a Model Con
 
 ### Client Configuration (`mcpServers`)
 
-Add the following configuration to **Claude Code** (`.mcp.json` or `~/.claude.json`), **Cursor** (`.cursor/mcp.json`), or **Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
+Every official JetPack release bundle includes the `jetpack` CLI alongside `jetpack-daemon`, so you can point your MCP client directly at the installed binary without building from source.
+
+Add the appropriate configuration for your OS to **Claude Code** (`.mcp.json` or `~/.claude.json`), **Cursor** (`.cursor/mcp.json` or `~/.cursor/mcp.json`), **Windsurf** (`~/.codeium/windsurf/mcp_config.json`), or any MCP-compatible IDE:
+
+#### macOS (`darwin/arm64`)
+
+When `JetPack.app` is installed in `/Applications`:
+
+```json
+{
+  "mcpServers": {
+    "jetpack": {
+      "command": "/Applications/JetPack.app/Contents/MacOS/jetpack",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+*(If you placed `JetPack.app` in `~/Applications`, use `/Users/<you>/Applications/JetPack.app/Contents/MacOS/jetpack`.)*
+
+#### Windows (`windows/amd64`)
+
+When `JetPack-windows-x64.zip` is extracted into `%LOCALAPPDATA%\JetPack\`:
+
+```json
+{
+  "mcpServers": {
+    "jetpack": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\JetPack\\jetpack.exe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### Linux (`linux/amd64`)
+
+When `JetPack-linux-x64.tar.gz` is extracted into `~/.local/opt/jetpack/`:
+
+```json
+{
+  "mcpServers": {
+    "jetpack": {
+      "command": "/home/<you>/.local/opt/jetpack/jetpack",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### Using `PATH` or Building from Source
+
+If `jetpack` is on your shell `PATH` (for example via `cargo install --path crates/jetpack-cli` or a symlink in `/usr/local/bin` / `~/.local/bin`), or if you are testing an unreleased local build (`target/release/jetpack`):
 
 ```json
 {
@@ -320,7 +377,7 @@ Add the following configuration to **Claude Code** (`.mcp.json` or `~/.claude.js
 }
 ```
 
-If `jetpack` is not on your shell `PATH`, point `"command"` to the built binary (for example `target/release/jetpack` on macOS/Linux or `C:\\Users\\<you>\\AppData\\Local\\JetPack\\jetpack.exe` on Windows).
+> **Note:** Regardless of where `jetpack` is invoked from, `jetpack mcp` automatically discovers and communicates with your active `jetpack-daemon` via `<JETPACK_HOME>/config/pairing.ipc` (including when the daemon was launched from `/Applications/JetPack.app`, `%LOCALAPPDATA%\JetPack\jetpack-daemon.exe`, or `~/.local/opt/jetpack/jetpack-daemon`), and `jetpack install-local` / `jetpack package` automatically use the sibling `jetpack-daemon` binary in the same directory.
 
 ### Exposed MCP Tools
 
@@ -555,6 +612,7 @@ JetPack runs native host processes without virtual machines by confining every p
 | **Process Tree Cleanup** | Win32 **Job Object** with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` | Process group `killpg` (`SIGKILL` after grace period) | Namespace / PID isolation + `killpg` cleanup |
 | **Job Workspace Access** | Explicit NTFS DACL (`SetNamedSecurityInfoW`) granting Read/Write on `<root>/workspaces/job_<id>` | SBPL `file-read*` + `file-write*` limited to `<root>/workspaces/job_<id>` | `--bind` + Landlock RW rule on `<root>/workspaces/job_<id>` |
 | **Shared Runtimes Access** | Explicit NTFS DACL Read-Only on `<root>/runtimes/` | SBPL `file-read*` on `<root>/runtimes/` + system libs (`/System`, `/usr/lib`, `dyld`) | `--ro-bind` + Landlock RO rule on `<root>/runtimes/` |
+| **Persistent Model Cache** (`permissions.model_cache = true`) | Explicit NTFS DACL Read/Write on `<root>/cache/models` (`SUB_CONTAINERS_AND_OBJECTS_INHERIT`) | SBPL `file-read*` + `file-write*` on `<root>/cache/models` (`0o700`) | `--bind` + Landlock RW rule on `<root>/cache/models` (`0o700`) |
 | **User Files (`~/Documents`, etc.)** | **Denied by default** (Low Integrity AppContainer lacks user profile ACLs) | **Denied by default** (`EPERM` / `Operation not permitted`) | **Denied by default** (`pivot_root` + Landlock LSM) |
 | **Direct Host Network** | **Denied by default** (no internetClient capability granted to AppContainer) | **Denied by default** (`(deny default)` blocks outbound sockets & Mach services) | **Denied by default** (`CLONE_NEWNET` creates isolated loopback-only netns) |
 | **GPU Acceleration Gate** (`permissions.gpu_access = true`) | DirectML / CUDA device access permitted inside sandbox | Conditional `(allow iokit-open (iokit-user-client-class "AGXDeviceUserClient"))` | Conditional `--dev-bind` for `/dev/dri` and `/dev/nvidia*` |
@@ -569,6 +627,7 @@ When `[permissions]` is omitted from `app.toml`, JetPack applies strict defaults
 filesystem_scopes = []
 network_allowlist = []
 gpu_access = false
+model_cache = false
 ```
 
 * **No absolute host paths**: Manifest validation rejects any path containing `..`, leading `/`, Windows drive prefixes, or `~` in `filesystem_scopes`.
@@ -586,11 +645,12 @@ Because sandboxed workers have **no direct access to host network interfaces**, 
 
 ### 2. Userspace Network Proxy (`permissions.network_allowlist`)
 
-`jetpack-daemon` runs an asynchronous userspace HTTP/CONNECT proxy exposed to the worker via `JETPACK_PROXY_ENDPOINT` (plus `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`):
+`jetpack-daemon` runs an asynchronous userspace HTTP/CONNECT and SOCKS5 proxy exposed to the worker via `JETPACK_PROXY_ENDPOINT` (plus `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`):
 
-1. **Allowlist Matching**: Every outbound `CONNECT` or HTTP request checks the destination `host:port` against `permissions.network_allowlist` in `app.toml` (supports exact matches like `api.openai.com:443`, wildcard subdomains like `*.huggingface.co:443`, and explicit non-loopback endpoints).
-2. **Forbidden Rules**: Global wildcards (`*`, `*:*`, `0.0.0.0:*`) are rejected at manifest validation time (`crates/jetpack-common/src/manifest.rs`), and workers cannot target `127.0.0.1:9470` or daemon internal ports through the proxy.
-3. **Blocking & Audit Logging**: Requests to unlisted domains are rejected immediately with `403 Forbidden` before opening any upstream TCP socket, and a security audit event is logged by `jetpack-daemon`. Raw `connect()` syscalls bypassing the proxy fail at the kernel level (`ENETUNREACH`, `EPERM`, or `WSAEACCES`).
+1. **Allowlist & Preset Matching**: Every outbound `CONNECT`, plain HTTP, or SOCKS5 request checks the destination `host:port` against `permissions.network_allowlist` in `app.toml` (supports exact matches like `api.openai.com:443`, multi-label wildcard subdomains like `*.huggingface.co:443` / `*.xethub.hf.co:443`, bracketed IPv6 literals, and the `"preset:huggingface"` shorthand).
+2. **Forbidden Rules**: Global wildcards (`*`, `*:*`, `0.0.0.0:*`), unknown `preset:*` tokens, and loopback daemon ports (`127.0.0.1:9470`) are rejected at manifest validation time (`crates/jetpack-common/src/manifest.rs`) or proxy evaluation time.
+3. **Zero-Buffering Multi-GB Streaming**: Upstream `TcpStream::connect` uses a `30s` connect timeout while bidirectional tunnels stream with bounded `64 KiB` directional buffers (`copy_bidirectional_with_sizes`) and no overall transfer timeout, updating worker idle-activity heartbeats (`last_activity_secs`) so large AI model downloads complete without idle termination. Request headers up to `64 KiB` are supported (`431 Request Header Fields Too Large` on overflow), and plain HTTP requests enforce `Connection: close` across hops.
+4. **Blocking & Audit Logging**: Requests to unlisted domains are rejected immediately with `403 Forbidden` (including `X-Jetpack-Blocked-Target: <host>:<port>`) before opening any upstream TCP socket, and an actionable `WARN` event with exact `app.toml` allowlist suggestions is written to `daemon.log` and streamed to the Developer Mode terminal. Raw `connect()` syscalls bypassing the proxy fail at the kernel level (`ENETUNREACH`, `EPERM`, or `WSAEACCES`).
 
 ---
 
@@ -676,6 +736,7 @@ try {
   await client.connectAndEnsureApp({
     appId: 'io.jetpack.media-converter',
     daemonPort: 9470,
+    downloadUrl: 'https://github.com/jetpack-desktop/releases/releases/latest',
     controlBar: {
       appName: 'FFmpeg Media Converter',
       warnOnUnsavedWork: () => hasActiveUnsavedWork(),
@@ -703,7 +764,11 @@ try {
   console.log('Worker ready:', client.getAppId());
 } catch (err) {
   if (err instanceof JetPackClientError) {
-    console.error(`JetPack error [${err.code}]: ${err.message}`);
+    if (err.code === 'DAEMON_NOT_RUNNING') {
+      console.error(`Install or start JetPack Desktop: ${err.downloadUrl}`);
+    } else {
+      console.error(`JetPack error [${err.code}]: ${err.message}`);
+    }
   } else {
     throw err;
   }
@@ -712,12 +777,12 @@ try {
 
 ### What `connectAndEnsureApp()` Automates
 
-1. **WASM Initialization & Identity**: Loads `jetpack-wasm` and restores (or creates) `WasmClientIdentity` (`Ed25519` + `X25519` keys persisted in `localStorage`).
-2. **Authenticated WebSocket Session**: Connects to `ws://127.0.0.1:9470` and executes the `ClientHello` / `ServerHello` handshake.
-3. **Auto-Pairing (`autoPair: true`)**: If the browser origin is unpaired, generates `jetpack://pair?client_id=...&pubkey=...&origin=...`, invokes `onPairingUri(uri)`, triggers the deep link (unless `disableAutoDeepLink: true`), and polls until approved or `pairingTimeoutMs` (`60000ms` default) elapses.
+1. **Loopback Liveness & Cold-Visit Probe (`GET /health`)**: Probes `http://127.0.0.1:<daemonPort>/health` (bounded by `healthProbeTimeoutMs = 2000` by default). If `jetpack-daemon` is not installed or not running, `connectAndEnsureApp()` rejects immediately with `JetPackClientError('DAEMON_NOT_RUNNING', ..., { downloadUrl })` **without** triggering an unhandled `jetpack://pair` deep link, and updates `JetPackControlBar` to `'Error'` with a sanitized HTTPS **"Download JetPack"** link.
+2. **WASM Initialization & Identity**: Loads `jetpack-wasm` and restores (or creates) `WasmClientIdentity` (`Ed25519` + `X25519` keys persisted in `localStorage`).
+3. **Auto-Pairing (`autoPair: true`) & WebSocket Session**: If `/health` reports `origin_paired: false` (with W3C Private Network Access headers) or the initial `ClientHello` fails because the origin is unpaired, generates `jetpack://pair?client_id=...&pubkey=...&origin=...`, invokes `onPairingUri(uri)`, triggers the deep link (unless `disableAutoDeepLink: true`), and polls until approved or `pairingTimeoutMs` (`60000ms` default) elapses, then completes the encrypted `X25519` / `Ed25519` handshake on `ws://127.0.0.1:9470`.
 4. **Install & Provision Check**: Queries `list_apps()`. If `appId` is missing, resolves `ociReference` from options or `get_catalog()` (verified `SignedAppCatalog`) and runs `pull_app()`, forwarding download, extraction, and environment stages (`oci_layer`, `runtime_download`, `runtime_extract`, `uv_bootstrap`, `python_standalone`, `uv_sync`) to `onProgress` (`percent` is `number | null`).
 5. **Worker Boot**: Calls `launch_app(appId, resetVolumes, onProgress)` if the worker is not already `Running` (or attaches this WebSocket session to the running worker), forwarding any just-in-time `runtime_*` / `uv_*` / `sandbox_launch` `app.launch.progress` updates to `onProgress`.
-6. **SDK Top Control Bar (`JetPackControlBar`)**: In browser environments (unless `controlBar: false`), automatically mounts an isolated Shadow-DOM top bar displaying the JetPack logo, app name, live status pill (`Connecting`, `Running`, `Stopped`, `Error`), `"Control Center"` link, and `"Stop"` action.
+6. **SDK Top Control Bar (`JetPackControlBar`)**: In browser environments (unless `controlBar: false`), automatically mounts an isolated Shadow-DOM top bar displaying the JetPack logo, app name, live status pill (`Connecting`, `Running`, `Stopped`, `Error`), `"Control Center"` link, optional `"Download JetPack"` link (on `DAEMON_NOT_RUNNING`), and `"Stop"` action.
 
 ## 2. Send Correlated Zero-Copy Binary Requests (`request`)
 
@@ -771,13 +836,14 @@ client.close();
 
 `client.close()` shuts down the WebSocket, clears all `onStream` handlers, rejects any pending `request()` promises with `JetPackClientError('CLIENT_CLOSED', ...)`, and transitions `JetPackControlBar` to `'Stopped'`.
 
-## 4. Safe Worker Stop & Standalone `/apps/<app-id>/` Hosting
+## 4. Safe Worker Stop, Standalone `/apps/<app-id>/`, and External `https://` Hosting
 
 `JetPackControlBar` uses `attachShadow({ mode: 'open' })` so host CSS never leaks into the bar or confirmation modal, and Control Bar styles never affect your application:
 
 * **Confirmation Guard**: Clicking **Stop** opens an in-Shadow-DOM confirmation dialog whenever `warnOnUnsavedWork` evaluates to `true` (boolean or predicate callback) or `onBeforeStop` is provided (and `warnOnUnsavedWork` is not `false`).
 * **Programmatic Stop**: Call `await client.stopApp()` to send `app.terminate` (`terminate_app(appId)`) without tearing down the bar, keeping it visible with status `'Stopped'`.
-* **Standalone MPA Routes & Window Mode**: Built-in apps served by `jetpack-daemon` live at dedicated multi-page entrypoints such as `/apps/io.jetpack.media-converter/` (`http://127.0.0.1:9470/apps/io.jetpack.media-converter/`). By default (`open_in_app_window = true`), Control Center uses `client.open_url(...)` (`"ui.open_url"`) so `jetpack-daemon` opens each app (`/apps/<app-id>/`) and Control Center in its own OS-native `wry` WebView desktop window (`WKWebView` on macOS, `WebView2` on Windows, `WebKitGTK` on Linux) sharing persistent storage in `<root>/webview-data` and showing independent taskbar/window entries (with transparent default-browser fallback when running headless, or browser tabs when `"Open Dashboard & Apps in Standalone Windows"` is turned off in **My Hardware & Security**), while `jetpack-daemon` multiplexes HTTP static serving, cross-session worker attachment, and reference-counted cleanup on `127.0.0.1:9470`.
+* **Standalone MPA/SPA Routes, Dynamic `ui/` Bundles & Window Downloads**: App frontends served by `jetpack-daemon` live under `/apps/<app-id>/` (`http://127.0.0.1:9470/apps/<app-id>/`). When an installed package ships its own `ui/` folder (`<root>/apps/<app-id>/<active_version>/ui/`), `jetpack-daemon` serves that decoupled bundle directly (with canonical boundary checks, MPA `<subpath>/index.html`, and extensionless SPA fallback) before falling back to embedded Control Center assets. By default (`open_in_app_window = true`), Control Center uses `client.open_url(...)` (`"ui.open_url"`) so `jetpack-daemon` opens each app (`/apps/<app-id>/`) and Control Center in its own OS-native `wry` WebView desktop window (`WKWebView` on macOS, `WebView2` on Windows, `WebKitGTK` on Linux) sharing persistent storage in `<root>/webview-data` and supporting both standard HTTP file downloads (into the user's `Downloads` directory) and `blob:` / `data:` `<a download>` exports via a native `rfd` save-file dialog (with transparent default-browser fallback when running headless, or browser tabs when `"Open Dashboard & Apps in Standalone Windows"` is turned off in **My Hardware & Security**), while `jetpack-daemon` multiplexes HTTP static serving, cross-session worker attachment, and reference-counted cleanup on `127.0.0.1:9470`.
+* **External `https://` Domains & `CatalogAppEntry.launch_url`**: Third-party web frontends hosted on developer domains (e.g., Vercel, Cloudflare Pages, or a custom `https://` site) connect seamlessly to `http://127.0.0.1:9470/health` and `ws://127.0.0.1:9470` thanks to W3C Private Network Access (`Access-Control-Allow-Private-Network: true`) and canonical `Origin` normalization in `paired_clients.db`. When an `Ed25519`-signed `SignedAppCatalog` entry specifies `launch_url` (an `https://` URL—or loopback `http://` for local development—whose normalized origin is listed in `allowed_origins`), Control Center, the system tray **Launch / Open** menu, and `ui.open_url` open that external URL directly in a dedicated OS-native `wry` window (`WKWebView` with `NSAllowsLocalNetworking` on macOS, `WebView2` on Windows, `WebKitGTK` on Linux) or default browser tab instead of `/apps/<app-id>/`. Both navigation and `window.open` handlers inside `wry` intercept `jetpack://pair` deep links cleanly without error pages.
 
 ## 5. Developer Mode Live Log Terminal (`JetPackLogTerminal`)
 
@@ -847,6 +913,9 @@ export interface ConnectAndEnsureAppOptions {
   pairingPollIntervalMs?: number;   // Default: 1500
   pairingTimeoutMs?: number;        // Default: 60000
   disableAutoDeepLink?: boolean;    // Default: false
+  downloadUrl?: string;             // HTTPS download link surfaced on DAEMON_NOT_RUNNING
+  healthProbeTimeoutMs?: number;    // /health pre-flight timeout in ms (default: 2000; 0 skips probe)
+  fetchFn?: typeof fetch;           // Custom fetch implementation for /health probe (testing/SSR)
   onProgress?: (progress: AppPullProgress) => void;
   onPairingUri?: (uri: string) => void;
   wasmModule?: WasmBindingsAdapter;
@@ -868,6 +937,7 @@ export interface JetPackControlBarOptions {
   appId?: string;
   appName?: string;
   controlCenterUrl?: string;           // Default: http://127.0.0.1:<daemonPort>/#apps
+  downloadUrl?: string;                // Optional HTTPS download link for Error state
   logoUrl?: string;                    // Overrides built-in JetPack SVG icon
   mountTarget?: HTMLElement | null;    // Default: document.body; pass null to defer mount()
   initialStatus?: ControlBarWorkerStatus; // Default: 'Connecting'
@@ -886,7 +956,7 @@ export interface JetPackControlBarOptions {
 | `mount` | `(target?: HTMLElement \| null) => boolean` | Inserts `#jetpack-control-bar-host` at the top of `target` (or `document.body`). Returns `false` if headless. |
 | `unmount` | `() => void` | Removes the host element and clears modal/keyboard listeners. |
 | `updateOptions` | `(partial: Partial<JetPackControlBarOptions>) => void` | Updates bar options live and refreshes rendered text/links. |
-| `setStatus` | `(status: ControlBarWorkerStatus, detail?: string) => void` | Updates the live status pill and optional error detail tooltip. |
+| `setStatus` | `(status: ControlBarWorkerStatus, detail?: string, options?: { downloadUrl?: string }) => void` | Updates the live status pill, optional error detail tooltip, and renders a sanitized `https://` `"Download JetPack"` link when in `'Error'` state (non-HTTPS URLs are ignored). |
 | `getStatus` | `() => ControlBarWorkerStatus` | Returns the current status (`'Connecting'`, `'Running'`, `'Stopped'`, or `'Error'`). |
 | `setAppName` / `setControlCenterUrl` | `(value: string) => void` | Updates the displayed app name or `"Control Center"` destination URL. |
 | `triggerStop` | `() => Promise<boolean>` | Opens the Shadow-DOM confirmation modal when `warnOnUnsavedWork` evaluates to `true` or `onBeforeStop` is set (unless `warnOnUnsavedWork === false`); otherwise stops directly. |
@@ -978,10 +1048,13 @@ export type StreamCallback<TOpcode extends string = string, TPayload = unknown> 
 ) => void;
 ```
 
-### `JetPackClientError` Codes
+### `JetPackClientError` & Codes
+
+`JetPackClientError` exposes `readonly code: JetPackClientErrorCode` and `readonly downloadUrl?: string` (populated on `DAEMON_NOT_RUNNING`, defaulting to `DEFAULT_JETPACK_DOWNLOAD_URL = 'https://github.com/jetpack-desktop/releases/releases/latest'`).
 
 | Code | Cause |
 | :--- | :--- |
+| `DAEMON_NOT_RUNNING` | `GET /health` timed out, failed to connect, or returned non-OK before pairing/WebSocket handshake. `err.downloadUrl` contains the sanitized `https://` JetPack installer link. |
 | `NOT_CONNECTED` | `request()` or `stopApp()` called before `connectAndEnsureApp()` succeeded. |
 | `CLIENT_CLOSED` | `request()` or `stopApp()` called after `close()`, or `close()` invoked while a request was in flight. |
 | `PAIRING_TIMEOUT` | User did not approve `jetpack://pair` within `pairingTimeoutMs`. |
@@ -1013,7 +1086,7 @@ Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
 | `JetPackWasmClient.connect(wsUrl, identity, origin?)` | `Promise<JetPackWasmClient>` | Opens binary WebSocket (`arraybuffer`) and executes `ClientHello` / `ServerHello` handshake. |
 | `is_connected()` | `boolean` | Returns `true` when in `Established` encrypted session state. |
 | `get_hardware_profile()` | `Promise<HardwareProfile>` | Sends `hardware.get_profile` and resolves with CPU, RAM/unified memory, and GPU device details. |
-| `get_catalog()` | `Promise<CatalogAppEntry[]>` | Fetches verified entries from the active `SignedAppCatalog` (refreshed via `catalog_url` with cached/embedded fallback), including `coming_soon?: boolean`. |
+| `get_catalog()` | `Promise<CatalogAppEntry[]>` | Fetches verified entries from the active `SignedAppCatalog` (refreshed via `catalog_url` with cached/embedded fallback), including `coming_soon?: boolean` and `launch_url?: string \| null`. |
 | `list_apps()` | `Promise<AppInfo[]>` | Lists installed apps with `status`, `is_verified`, and sanitized `volumes` (`folder_name`, `is_configured`—never host paths). |
 | `pull_app(imageRef, onProgress?, appId?)` | `Promise<AppPullOkResponse>` | Pulls a catalog-verified OCI app and streams `app.pull.progress` events (`percent` may be `number \| null`). |
 | `launch_app(appId, resetVolumes?, onProgress?)` | `Promise<AppLaunchOkResponse>` | Starts sandboxed worker (`resetVolumes` forces fresh `rfd` folder prompts). Optional `onProgress` receives `app.launch.progress` events (`runtime_download`, `runtime_extract`, `uv_bootstrap`, `python_standalone`, `uv_sync`, `sandbox_launch`) while remaining compatible with 1- and 2-argument calls. |
@@ -1024,7 +1097,7 @@ Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
 | `get_settings()` / `set_developer_mode(enabled)` / `set_open_in_app_window(enabled)` / `set_open_dashboard_on_startup(enabled)` | `Promise<DaemonSettings>` | Reads or partially updates daemon UI settings (`developer_mode`, `open_in_app_window`, `open_dashboard_on_startup`, `daemon_version`). |
 | `subscribe_logs(onEntryCallback)` | `Promise<LogsSubscribeOkResponse>` | Sends `logs.subscribe` and streams sanitized `logs.entry` (`{ timestamp_ms, level, source, message }`) frames; rejects with `DEV_MODE_REQUIRED` if Developer Mode is off. |
 | `unsubscribe_logs()` | `Promise<LogsUnsubscribeOkResponse>` | Sends `logs.unsubscribe` and clears the active log callback. |
-| `open_url(url)` | `Promise<UiOpenUrlOkResponse>` | Loopback-only (`127.0.0.1` / `localhost`). Opens a validated loopback HTTP URL via `jetpack-daemon` in a dedicated OS-native `wry` WebView desktop window (`WKWebView` / `WebView2` / `WebKitGTK`, persisted under `<root>/webview-data`) per app when `open_in_app_window` is `true` (with automatic default-browser fallback in headless environments) or a browser tab when `false`, resolving to `{ opened_in_app_window }`. |
+| `open_url(url)` | `Promise<UiOpenUrlOkResponse>` | Loopback-only caller (`127.0.0.1` / `localhost`). Opens either a validated loopback HTTP URL or an exact `launch_url` declared in the active Ed25519-verified `SignedAppCatalog` (with origin in `allowed_origins`) in a dedicated OS-native `wry` WebView window (`WKWebView` with `NSAllowsLocalNetworking` / `WebView2` / `WebKitGTK`, persisted under `<root>/webview-data` and intercepting `jetpack://pair` deep links) when `open_in_app_window` is `true` (with headless default-browser fallback) or a browser tab when `false`, resolving to `{ opened_in_app_window }`. |
 | `export_diagnostics()` | `Promise<DiagnosticsExportResult>` | Requests `diagnostics.export` and returns `{ filename, generated_at_unix, log_tail_bytes, log_truncated, redactions_applied, zip_bytes }` where `zip_bytes` is a `Uint8Array` sliced from the binary frame. |
 | `send_diagnostics()` | `Promise<DiagnosticsSendOkResponse>` | Requests `diagnostics.send` to transmit a sanitized diagnostic JSON report to `[diagnostics].report_url` (rejects with `[DIAGNOSTICS_DISABLED]` when `report_url` is unset). |
 | `check_for_updates()` | `Promise<UpdateStatusResponse>` | Sends `update.check` and resolves with `{ current_version, latest_version, update_available, release_url, asset_name, checked_at_secs, error }`. |
@@ -1374,9 +1447,11 @@ Because workers run without direct network interfaces (`CLONE_NEWNET` on Linux, 
 
 ```toml
 [permissions]
+model_cache = true
 network_allowlist = [
-  "huggingface.co:443",
-  "*.huggingface.co:443",
+  "preset:huggingface",
+  # Expands to:
+  # "huggingface.co:443", "*.huggingface.co:443", "hf.co:443", "*.hf.co:443", "*.xethub.hf.co:443"
 ]
 ```
 
@@ -1400,7 +1475,27 @@ with JetPackClient() as client:
             data = resp.read()
 ```
 
-Requests to any `host:port` not matching `network_allowlist` (or targeting loopback daemon ports) are blocked immediately with `403 Forbidden` by the in-daemon Rust proxy and recorded in the security audit log.
+### Streaming Downloads, Redirect Chains, and Blocked-Host Diagnostics
+
+* **Zero-buffering multi-GB streaming**: `UserspaceProxy` enforces a `30s` upstream connect timeout without capping active transfer duration, streams tunnels with fixed `64 KiB` directional buffers (`tokio::io::copy_bidirectional_with_sizes`), and refreshes worker idle-activity heartbeats during active transfers so multi-gigabyte model downloads (Whisper, Flux, RMBG, TTS) do not trip the idle reaper.
+* **Redirect-chain protection**: Supports HTTP headers up to `64 KiB` (accommodating long presigned S3/LFS CDN redirect URLs and returning `431 Request Header Fields Too Large` on overflow) and enforces `Connection: close` on plain HTTP forwarding so every hop re-validates `network_allowlist`.
+* **Actionable diagnostics**: Requests to any `host:port` not matching `network_allowlist` (or targeting loopback daemon ports) are blocked immediately with `403 Forbidden`, include an `X-Jetpack-Blocked-Target: <host>:<port>` response header, and emit a `WARN` event in `<root>/logs/daemon.log` and the Developer Mode live terminal showing the exact domain/wildcard or `"preset:huggingface"` rule to add in `app.toml`.
+
+## 3. Persistent AI Model Cache (`permissions.model_cache`)
+
+Because per-job workspaces (`<root>/workspaces/job_<id>`) are ephemeral and app bundles (`<root>/apps/<app-id>/<version>`) are read-only and replaced on updates, heavy AI workers should opt into the shared persistent model cache in `app.toml`:
+
+```toml
+[permissions]
+model_cache = true
+network_allowlist = ["preset:huggingface"]
+```
+
+When `model_cache = true`:
+
+* `jetpack-daemon` prepares `<root>/cache/models` (with `0o700` permissions on Unix) plus `huggingface/` and `torch/` subdirectories and mounts `<root>/cache/models` **read-write** into the OS sandbox (Seatbelt, AppContainer NTFS ACL, or `bwrap` + Landlock).
+* The worker environment receives `JETPACK_MODEL_CACHE_DIR=<root>/cache/models`, `HF_HOME=<root>/cache/models/huggingface`, and `TORCH_HOME=<root>/cache/models/torch`.
+* When `model_cache = false` (the default), `<root>/cache/models` remains inaccessible under the sandbox default-deny policy and these variables are not injected.
 
 ---
 
@@ -1481,8 +1576,9 @@ mode = "read-write"
 
 [permissions]
 gpu_access = true
+model_cache = true
 filesystem_scopes = ["cache"]
-network_allowlist = ["huggingface.co:443"]
+network_allowlist = ["preset:huggingface"]
 max_memory_mb = 4096
 
 [execution]
@@ -1567,8 +1663,9 @@ JETPACK_LOG_LEVEL = "info"
 | Field | Type | Default | Validation Rules |
 | :--- | :--- | :--- | :--- |
 | `filesystem_scopes` | `string[]` | `[]` | Relative subdirectories inside the job workspace (no `/`, `..`, `~`, or drive prefixes). |
-| `network_allowlist` | `string[]` | `[]` | Allowed `host:port` endpoints for the Userspace Proxy (wildcards `*`, `0.0.0.0:*`, and loopback daemon ports rejected). |
+| `network_allowlist` | `string[]` | `[]` | Allowed `host:port` endpoints, bracketed IPv6 literals, or `"preset:huggingface"` for the Userspace Proxy (unknown `preset:*`, wildcards `*`/`0.0.0.0:*`, and loopback daemon ports rejected). |
 | `gpu_access` | `bool` | `false` | Enables OS GPU driver/device access (`AGXDeviceUserClient`, `/dev/dri`, `/dev/nvidia*`, CUDA, DirectML). |
+| `model_cache` | `bool` | `false` | Mounts persistent `<root>/cache/models` read-write and injects `JETPACK_MODEL_CACHE_DIR`, `HF_HOME`, and `TORCH_HOME`. |
 | `max_memory_mb` | `u64` | `None` | Optional memory ceiling in MiB (must be `> 0` if set). |
 
 ### 8. `[execution]` (Required)
@@ -1594,7 +1691,7 @@ description: >-
 
 # CLI Tools Reference
 
-JetPack provides two complementary binaries:
+JetPack provides two complementary binaries, both built together by `make release-daemon` and included in every release bundle (`JetPack.app/Contents/MacOS/` on macOS, `JetPack-windows-x64.zip` on Windows, and `JetPack-linux-x64.tar.gz` on Linux):
 
 * **`jetpack`** (`crates/jetpack-cli`) — Standalone console developer CLI for scaffolding AI-ready projects, running the local MCP server (`stdio`), generating TypeScript opcode contracts, validating manifests, and driving local installs/packaging.
 * **`jetpack-daemon`** (`crates/jetpack-daemon`) — Native system-tray orchestrator and catalog operator binary.
@@ -1645,13 +1742,13 @@ Validates `app.toml` (defaults to `app.toml` in the current directory, or `<dir>
 jetpack validate ./workers/my-ocr-worker/app.toml
 ```
 
-### `jetpack install-local [path]`
+### `jetpack install-local` (`path`)
 
-Delegates to `jetpack-daemon --install-local-app <path>` to package and install a local developer worker directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`, restricted to `127.0.0.1` / `localhost`). Defaults `path` to `.`.
+Delegates to `jetpack-daemon --install-local-app <path>` to package and install a local developer worker (including any built `ui/` static directory) directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`, restricted to `127.0.0.1` / `localhost`). Defaults `path` to `.`.
 
-### `jetpack package [path] --out <bundle_dir> [--oci-ref <ref>]`
+### `jetpack package` (`path --out <bundle_dir> --oci-ref <ref>`)
 
-Delegates to `jetpack-daemon --package-app` to package a validated project into an OCI Image Layout v1.0.0 bundle (automatically excluding `AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.agents/`, `jetpack-env.d.ts`, `.git/`, `.venv/`, and secret files). Defaults `path` to `.`.
+Delegates to `jetpack-daemon --package-app` to package a validated project—alongside its built `ui/` static frontend (`ui/index.html`, `ui/assets/*`) if present—into an OCI Image Layout v1.0.0 bundle (automatically excluding `AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.agents/`, `jetpack-env.d.ts`, `node_modules/`, `target/`, `.git/`, `.venv/`, `__pycache__/`, symlinks, and secret files). Defaults `path` to `.`.
 
 ***
 
@@ -1683,18 +1780,18 @@ jetpack-daemon --validate-manifest ./workers/my-ocr-worker/app.toml
 
 ### `--install-local-app <source_dir>`
 
-Validates, packages, and installs a local developer worker directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`):
+Validates, packages, and installs a local developer worker (plus any `ui/` bundle) directly into `<root>/blobs/sha256/` and `<root>/apps/<app-id>/<version>/` in unverified developer mode (`is_verified = false`):
 
 ```bash
 jetpack-daemon --install-local-app ./workers/my-ocr-worker
 ```
 
 * Blocks official `SignedAppCatalog` IDs (`APP_SPOOFING_DETECTED`).
-* Displays the app with an `UNVERIFIED / LOCAL DEV` badge in Control Center and restricts WebSocket origins to `127.0.0.1` / `localhost`.
+* Displays the app with an `UNVERIFIED / LOCAL DEV` badge in Control Center, automatically discovers `<root>/apps/<app-id>/<version>/ui/index.html` for `/apps/<app-id>/`, and restricts WebSocket origins to `127.0.0.1` / `localhost`.
 
 ### `--package-app <source_dir> --out <bundle_dir> [--oci-ref <ref>]`
 
-Packages a validated worker directory into a standards-compliant **OCI Image Layout v1.0.0** directory and outputs `manifest_sha256` plus a `CatalogAppEntry` JSON snippet:
+Packages a validated worker directory (including optional `ui/` static assets served dynamically at `/apps/<app-id>/`) into an ORAS-compatible **OCI Image Layout v1.0.0** directory (`index.json` with `org.opencontainers.image.ref.name`) and prints `manifest_sha256`, the `oras cp --from-oci-layout` push command, `oras manifest fetch --descriptor` digest check, and a `CatalogAppEntry` JSON snippet:
 
 ```bash
 jetpack-daemon \
@@ -1703,7 +1800,7 @@ jetpack-daemon \
   --oci-ref ghcr.io/your-org/my-ocr-worker:0.1.0
 ```
 
-Automatically strips `*.key`, `*.pem`, `*.secret`, `jetpack-root-signing*`, `.git/`, `.venv/`, and `__pycache__/` so secrets cannot leak into published layers.
+Automatically strips `*.key`, `*.pem`, `*.secret`, `jetpack-root-signing*`, `node_modules/`, `target/`, `.git/`, `.venv/`, `__pycache__/`, and symlinks so build caches, secrets, and unsafe links cannot leak into published layers.
 
 ## Catalog Operator Commands
 
@@ -1742,6 +1839,7 @@ jetpack-daemon --sign-catalog crates/jetpack-daemon/assets/catalog.signed.json -
 | `--test-ws-client` | Connect to a running daemon (`127.0.0.1:9470`) to verify PNA, handshake, and `system.echo` (supports `--send-json` and `--origin`). |
 | `--ws-smoke-test` | Run offline end-to-end WebSocket security and `hardware.get_profile` smoke test. |
 | `--oci-smoke-test` | Run offline OCI CAS, SHA-256 verification, and hardlink/APFS clone smoke test. |
+| `--oci-remote-smoke-test <ref> [--expected-digest <sha256:...>]` | Pull a live public OCI reference (such as `ghcr.io/...`), verify manifest + blob SHA-256 digests, and safely unpack into an isolated temporary CAS root. |
 | `--python-smoke-test` | Run offline hermetic `uv` + `python-build-standalone` provisioner smoke test. |
 | `--sandbox-smoke-test` | Run offline OS native kernel sandbox (`AppContainer` / `Seatbelt` / `bwrap+Landlock`) smoke test. |
 | `--worker-ipc-smoke-test` | Run offline sandboxed worker IPC, userspace proxy, and lifecycle cleanup smoke test. |
@@ -1775,36 +1873,48 @@ jetpack-daemon --validate-manifest ./workers/my-ocr-worker/app.toml
 ### Step 2: Package an OCI Image Layout v1.0.0 Bundle
 
 ```bash
-jetpack-daemon \
-  --package-app ./workers/my-ocr-worker \
+jetpack package ./workers/my-ocr-worker \
   --out ./dist/my-ocr-worker-oci \
   --oci-ref ghcr.io/your-org/my-ocr-worker:0.1.0
 ```
+
+*(Equivalent daemon invocation: `jetpack-daemon --package-app ./workers/my-ocr-worker --out ./dist/my-ocr-worker-oci --oci-ref ghcr.io/your-org/my-ocr-worker:0.1.0`.)*
 
 Output bundle structure:
 
 ```text
 dist/my-ocr-worker-oci/
 ├── oci-layout               # { "imageLayoutVersion": "1.0.0" }
-├── index.json               # Multi-arch OciImageIndex matching [hardware].architectures
+├── index.json               # Root entry with org.opencontainers.image.ref.name tag annotation
 └── blobs/sha256/
     ├── <layer_sha256>       # Deterministic .tar.gz with POSIX '/' paths, 0755 entrypoints
     ├── <config_sha256>      # OCI image config JSON with rootfs.diff_ids & io.jetpack.app.* labels
     ├── <manifest_sha256>... # Per-platform OciImageManifest blobs
-    └── <index_sha256>       # Multi-arch OciImageIndex blob (when architectures.len() > 1)
+    └── <index_sha256>       # Multi-arch OciImageIndex blob (when multiple architectures are declared)
 ```
 
-The command prints `manifest_sha256` and a ready-to-edit `CatalogAppEntry` JSON block to stdout.
+The command prints `manifest_sha256`, the ready-to-run `oras cp --from-oci-layout` push command, `oras manifest fetch --descriptor` verification command, and a `CatalogAppEntry` JSON block to stdout.
 
-### Step 3: Push with `oras` & Verify Digest
+### Step 3: Push to `ghcr.io` with `oras` & Verify Digest
 
-Push the OCI Image Layout directory to your registry:
+Ensure your GHCR package visibility is set to **Public** (JetPack Store installs pull anonymously via `ghcr.io/token`), then push using the exact tag printed by `jetpack package`:
 
 ```bash
-oras cp --from-oci-layout ./dist/my-ocr-worker-oci:latest ghcr.io/your-org/my-ocr-worker:0.1.0
+oras cp --from-oci-layout ./dist/my-ocr-worker-oci:0.1.0 ghcr.io/your-org/my-ocr-worker:0.1.0
+oras manifest fetch --descriptor ghcr.io/your-org/my-ocr-worker:0.1.0
 ```
 
-> **Important:** Confirm that the pushed remote manifest digest matches `manifest_sha256`. If your registry or push tool re-serializes the manifest or index, update `manifest_sha256` in `CatalogAppEntry` to match the exact remote digest before signing the catalog.
+> **Important:** Confirm that the remote `digest` printed by `oras manifest fetch --descriptor` matches `manifest_sha256` from `jetpack package`. If your registry or push tool re-serializes the manifest or index, update `manifest_sha256` in `CatalogAppEntry` to match the exact remote digest before signing the catalog.
+
+Verify end-to-end anonymous pull, SHA-256 verification, and Tar-Slip-safe unpacking from `ghcr.io`:
+
+```bash
+jetpack-daemon \
+  --oci-remote-smoke-test ghcr.io/your-org/my-ocr-worker:0.1.0 \
+  --expected-digest sha256:<64-hex>
+```
+
+For CI/CD automation, see [GitHub Actions Publishing to GHCR](/publishing/ghcr-workflow) (`examples/publish-app-ghcr.yml`).
 
 Populate `category`, `icon_svg`, and `allowed_origins` (for example `["https://studio.example.com"]`) in the `CatalogAppEntry` JSON object.
 
@@ -1867,3 +1977,111 @@ unset JETPACK_SIGNING_KEY
 ```
 
 `--sign-catalog` parses the catalog against `SignedAppCatalog` (`#[serde(deny_unknown_fields)]`), computes the canonical `Ed25519` signature over `SignedAppCatalog::canonical_payload_bytes()`, writes `ed25519_signature` atomically, and re-verifies the file from disk before exiting `0`.
+
+---
+
+---
+url: https://jetpack-desktop.github.io/publishing/ghcr-workflow.md
+description: >-
+  Automated GitHub Actions workflow template for validating, packaging, pushing
+  JetPack apps to ghcr.io via ORAS, and verifying manifest_sha256.
+---
+
+# GitHub Actions Publishing to GHCR
+
+This guide shows how to automate publishing an individual JetPack worker application to **GitHub Container Registry (`ghcr.io`)** using `jetpack` / `jetpack-daemon` and `oras`, then verify the remote `manifest_sha256` digest required by `catalog.signed.json`.
+
+A ready-to-copy workflow file is included in the repository at `examples/publish-app-ghcr.yml`.
+
+## 1. Prerequisites
+
+1. A repository containing a valid JetPack worker (`app.toml`, `worker.py` or native binary, and optional built `ui/` bundle).
+2. GitHub Actions permissions with `packages: write` so ${{ secrets.GITHUB_TOKEN }} can push OCI manifests and blobs to `ghcr.io`.
+3. **Public package visibility**: JetPack Store installs pull from `ghcr.io` using anonymous Bearer token exchange (`https://ghcr.io/token`). After the first push, open the package settings on GitHub (`https://github.com/users/<owner>/packages/container/<package>/settings` or your organization's Packages settings) and set visibility to **Public** so `jetpack-daemon` can pull it on end-user machines without credentials.
+
+## 2. Workflow Walkthrough
+
+1. **Validate `app.toml`**:
+   ```bash
+   jetpack validate ./app.toml
+   ```
+2. **Package an ORAS-compatible OCI Image Layout v1.0.0 bundle**:
+
+   ```bash
+   jetpack package . --out ./dist/oci --oci-ref ghcr.io/your-org/my-worker:0.1.0
+   ```
+
+   `jetpack package` writes `oci-layout`, `blobs/sha256/*`, and root `index.json` with `"org.opencontainers.image.ref.name": "0.1.0"` pointing to either:
+
+   * the multi-arch `OciImageIndex` blob (`application/vnd.oci.image.index.v1+json`) when `[hardware].architectures` lists multiple platforms, or
+   * the single-arch `OciImageManifest` blob (`application/vnd.oci.image.manifest.v1+json`) when one architecture is declared.
+
+   It also prints the exact `manifest_sha256`, the `oras cp --from-oci-layout` push command, and the `oras manifest fetch --descriptor` verification command.
+3. **Push to `ghcr.io` with `oras`**:
+   ```bash
+   echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+   oras cp --from-oci-layout ./dist/oci:0.1.0 ghcr.io/your-org/my-worker:0.1.0
+   ```
+4. **Verify the live remote digest**:
+   ```bash
+   oras manifest fetch --descriptor ghcr.io/your-org/my-worker:0.1.0
+   ```
+   Confirm the returned `digest` equals `manifest_sha256` from `jetpack package` before submitting your `CatalogAppEntry` to [Store Submission & Catalog Signing](/publishing/store-submission).
+5. **Run the live end-to-end pull smoke test** (once the GHCR package is **Public**):
+   ```bash
+   jetpack-daemon \
+     --oci-remote-smoke-test ghcr.io/your-org/my-worker:0.1.0 \
+     --expected-digest sha256:<64-hex>
+   ```
+   This verifies anonymous `ghcr.io/token` Bearer negotiation, multi-arch platform selection, `307` CDN blob streaming, `SHA-256` CAS commit, and Tar-Slip-safe unpacking in an isolated temporary directory.
+
+## 3. Complete Workflow Template (`examples/publish-app-ghcr.yml`)
+
+```yaml
+name: Publish JetPack App to GHCR
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  package-and-publish-ghcr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oras-project/setup-oras@v1
+        with:
+          version: "1.2.2"
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install JetPack CLI & Daemon
+        run: |
+          cargo install --locked --git https://github.com/jetpack-io/jetpack.git jetpack-cli jetpack-daemon
+
+      - name: Validate & Package OCI Layout
+        id: pkg
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          OCI_REF="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]'):${TAG}"
+          jetpack validate ./app.toml
+          OUT="$(jetpack package . --out ./dist/oci --oci-ref "${OCI_REF}")"
+          echo "${OUT}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "oci_ref=${OCI_REF}" >> "${GITHUB_OUTPUT}"
+          echo "digest=$(echo "${OUT}" | awk '/manifest_sha256:/ {print $2; exit}')" >> "${GITHUB_OUTPUT}"
+
+      - name: Push to GHCR & Verify Digest
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+          oras cp --from-oci-layout "./dist/oci:${{ steps.pkg.outputs.tag }}" "${{ steps.pkg.outputs.oci_ref }}"
+          REMOTE_DIGEST="$(oras manifest fetch --descriptor "${{ steps.pkg.outputs.oci_ref }}" | jq -r '.digest')"
+          test "${REMOTE_DIGEST}" = "${{ steps.pkg.outputs.digest }}"
+```
+
+See also [CLI Tools Reference](/publishing/cli-tools) and [Store Submission & Catalog Signing](/publishing/store-submission).

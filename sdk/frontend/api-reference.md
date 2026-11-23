@@ -50,6 +50,9 @@ export interface ConnectAndEnsureAppOptions {
   pairingPollIntervalMs?: number;   // Default: 1500
   pairingTimeoutMs?: number;        // Default: 60000
   disableAutoDeepLink?: boolean;    // Default: false
+  downloadUrl?: string;             // HTTPS download link surfaced on DAEMON_NOT_RUNNING
+  healthProbeTimeoutMs?: number;    // /health pre-flight timeout in ms (default: 2000; 0 skips probe)
+  fetchFn?: typeof fetch;           // Custom fetch implementation for /health probe (testing/SSR)
   onProgress?: (progress: AppPullProgress) => void;
   onPairingUri?: (uri: string) => void;
   wasmModule?: WasmBindingsAdapter;
@@ -71,6 +74,7 @@ export interface JetPackControlBarOptions {
   appId?: string;
   appName?: string;
   controlCenterUrl?: string;           // Default: http://127.0.0.1:<daemonPort>/#apps
+  downloadUrl?: string;                // Optional HTTPS download link for Error state
   logoUrl?: string;                    // Overrides built-in JetPack SVG icon
   mountTarget?: HTMLElement | null;    // Default: document.body; pass null to defer mount()
   initialStatus?: ControlBarWorkerStatus; // Default: 'Connecting'
@@ -89,7 +93,7 @@ export interface JetPackControlBarOptions {
 | `mount` | `(target?: HTMLElement \| null) => boolean` | Inserts `#jetpack-control-bar-host` at the top of `target` (or `document.body`). Returns `false` if headless. |
 | `unmount` | `() => void` | Removes the host element and clears modal/keyboard listeners. |
 | `updateOptions` | `(partial: Partial<JetPackControlBarOptions>) => void` | Updates bar options live and refreshes rendered text/links. |
-| `setStatus` | `(status: ControlBarWorkerStatus, detail?: string) => void` | Updates the live status pill and optional error detail tooltip. |
+| `setStatus` | `(status: ControlBarWorkerStatus, detail?: string, options?: { downloadUrl?: string }) => void` | Updates the live status pill, optional error detail tooltip, and renders a sanitized `https://` `"Download JetPack"` link when in `'Error'` state (non-HTTPS URLs are ignored). |
 | `getStatus` | `() => ControlBarWorkerStatus` | Returns the current status (`'Connecting'`, `'Running'`, `'Stopped'`, or `'Error'`). |
 | `setAppName` / `setControlCenterUrl` | `(value: string) => void` | Updates the displayed app name or `"Control Center"` destination URL. |
 | `triggerStop` | `() => Promise<boolean>` | Opens the Shadow-DOM confirmation modal when `warnOnUnsavedWork` evaluates to `true` or `onBeforeStop` is set (unless `warnOnUnsavedWork === false`); otherwise stops directly. |
@@ -181,10 +185,13 @@ export type StreamCallback<TOpcode extends string = string, TPayload = unknown> 
 ) => void;
 ```
 
-### `JetPackClientError` Codes
+### `JetPackClientError` & Codes
+
+`JetPackClientError` exposes `readonly code: JetPackClientErrorCode` and `readonly downloadUrl?: string` (populated on `DAEMON_NOT_RUNNING`, defaulting to `DEFAULT_JETPACK_DOWNLOAD_URL = 'https://github.com/jetpack-desktop/releases/releases/latest'`).
 
 | Code | Cause |
 | :--- | :--- |
+| `DAEMON_NOT_RUNNING` | `GET /health` timed out, failed to connect, or returned non-OK before pairing/WebSocket handshake. `err.downloadUrl` contains the sanitized `https://` JetPack installer link. |
 | `NOT_CONNECTED` | `request()` or `stopApp()` called before `connectAndEnsureApp()` succeeded. |
 | `CLIENT_CLOSED` | `request()` or `stopApp()` called after `close()`, or `close()` invoked while a request was in flight. |
 | `PAIRING_TIMEOUT` | User did not approve `jetpack://pair` within `pairingTimeoutMs`. |
@@ -216,7 +223,7 @@ Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
 | `JetPackWasmClient.connect(wsUrl, identity, origin?)` | `Promise<JetPackWasmClient>` | Opens binary WebSocket (`arraybuffer`) and executes `ClientHello` / `ServerHello` handshake. |
 | `is_connected()` | `boolean` | Returns `true` when in `Established` encrypted session state. |
 | `get_hardware_profile()` | `Promise<HardwareProfile>` | Sends `hardware.get_profile` and resolves with CPU, RAM/unified memory, and GPU device details. |
-| `get_catalog()` | `Promise<CatalogAppEntry[]>` | Fetches verified entries from the active `SignedAppCatalog` (refreshed via `catalog_url` with cached/embedded fallback), including `coming_soon?: boolean`. |
+| `get_catalog()` | `Promise<CatalogAppEntry[]>` | Fetches verified entries from the active `SignedAppCatalog` (refreshed via `catalog_url` with cached/embedded fallback), including `coming_soon?: boolean` and `launch_url?: string \| null`. |
 | `list_apps()` | `Promise<AppInfo[]>` | Lists installed apps with `status`, `is_verified`, and sanitized `volumes` (`folder_name`, `is_configured`—never host paths). |
 | `pull_app(imageRef, onProgress?, appId?)` | `Promise<AppPullOkResponse>` | Pulls a catalog-verified OCI app and streams `app.pull.progress` events (`percent` may be `number \| null`). |
 | `launch_app(appId, resetVolumes?, onProgress?)` | `Promise<AppLaunchOkResponse>` | Starts sandboxed worker (`resetVolumes` forces fresh `rfd` folder prompts). Optional `onProgress` receives `app.launch.progress` events (`runtime_download`, `runtime_extract`, `uv_bootstrap`, `python_standalone`, `uv_sync`, `sandbox_launch`) while remaining compatible with 1- and 2-argument calls. |
@@ -227,7 +234,7 @@ Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
 | `get_settings()` / `set_developer_mode(enabled)` / `set_open_in_app_window(enabled)` / `set_open_dashboard_on_startup(enabled)` | `Promise<DaemonSettings>` | Reads or partially updates daemon UI settings (`developer_mode`, `open_in_app_window`, `open_dashboard_on_startup`, `daemon_version`). |
 | `subscribe_logs(onEntryCallback)` | `Promise<LogsSubscribeOkResponse>` | Sends `logs.subscribe` and streams sanitized `logs.entry` (`{ timestamp_ms, level, source, message }`) frames; rejects with `DEV_MODE_REQUIRED` if Developer Mode is off. |
 | `unsubscribe_logs()` | `Promise<LogsUnsubscribeOkResponse>` | Sends `logs.unsubscribe` and clears the active log callback. |
-| `open_url(url)` | `Promise<UiOpenUrlOkResponse>` | Loopback-only (`127.0.0.1` / `localhost`). Opens a validated loopback HTTP URL via `jetpack-daemon` in a dedicated OS-native `wry` WebView desktop window (`WKWebView` / `WebView2` / `WebKitGTK`, persisted under `<root>/webview-data`) per app when `open_in_app_window` is `true` (with automatic default-browser fallback in headless environments) or a browser tab when `false`, resolving to `{ opened_in_app_window }`. |
+| `open_url(url)` | `Promise<UiOpenUrlOkResponse>` | Loopback-only caller (`127.0.0.1` / `localhost`). Opens either a validated loopback HTTP URL or an exact `launch_url` declared in the active Ed25519-verified `SignedAppCatalog` (with origin in `allowed_origins`) in a dedicated OS-native `wry` WebView window (`WKWebView` with `NSAllowsLocalNetworking` / `WebView2` / `WebKitGTK`, persisted under `<root>/webview-data` and intercepting `jetpack://pair` deep links) when `open_in_app_window` is `true` (with headless default-browser fallback) or a browser tab when `false`, resolving to `{ opened_in_app_window }`. |
 | `export_diagnostics()` | `Promise<DiagnosticsExportResult>` | Requests `diagnostics.export` and returns `{ filename, generated_at_unix, log_tail_bytes, log_truncated, redactions_applied, zip_bytes }` where `zip_bytes` is a `Uint8Array` sliced from the binary frame. |
 | `send_diagnostics()` | `Promise<DiagnosticsSendOkResponse>` | Requests `diagnostics.send` to transmit a sanitized diagnostic JSON report to `[diagnostics].report_url` (rejects with `[DIAGNOSTICS_DISABLED]` when `report_url` is unset). |
 | `check_for_updates()` | `Promise<UpdateStatusResponse>` | Sends `update.check` and resolves with `{ current_version, latest_version, update_available, release_url, asset_name, checked_at_secs, error }`. |

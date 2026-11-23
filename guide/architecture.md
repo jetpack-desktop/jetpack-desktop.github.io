@@ -25,7 +25,8 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
                                        v
 +-----------------------------------------------------------------------------+
 | Tier 2: Rust Tray Gatekeeper (jetpack-daemon)                               |
-|   - Embedded Control Center HTTP server (http://127.0.0.1:9470)             |
+|   - Dynamic installed app UI (<root>/apps/<app-id>/<version>/ui/) &       |
+|     embedded Control Center HTTP server (http://127.0.0.1:9470)             |
 |   - ChaCha20-Poly1305 encrypted paired client & volume store (OS Vault key) |
 |   - Ed25519 SignedAppCatalog verifier & anti-spoofing enforcer              |
 |   - Hardware Discovery (NVML / Vulkan / DX12 / Metal / sysctl)              |
@@ -48,11 +49,13 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
 
 ### Tier 1: WASM Frontend (`jetpack-wasm` & `@jetpack/client`)
 
-Web applications (including standalone MPA apps hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
+Web applications (including standalone MPA/SPA UIs hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
 
 ### Tier 2: Rust Tray Gatekeeper (`jetpack-daemon`)
 
-`jetpack-daemon` is a lightweight native binary (`~5–10 MB`) managing the system tray icon (`tao` + `tray-icon`), the loopback HTTP/WebSocket server on `127.0.0.1:9470` (serving Control Center, standalone `/apps/<app-id>/` pages, and cross-session worker fan-out/reference-counted teardown), hardware discovery, OCI bundle caching (including slim single-example release seeding), isolated Python/native runtime provisioning, native OS dialogs (`rfd`), sanitized diagnostic bundle export/reporting (`diagnostics`), SHA-256-verified self-updates (`updater`), and worker lifecycle supervision.
+`jetpack-daemon` is a lightweight native binary (`~5–10 MB`) managing the system tray icon (`tao` + `tray-icon`), native `wry` WebView windows (with cross-platform `download_started`/`download_completed` handlers and a `blob:`/`data:` `rfd` save-dialog IPC bridge for `<a download>` and diagnostic `.zip` exports), the loopback HTTP/WebSocket server on `127.0.0.1:9470`, hardware discovery, OCI bundle caching (including slim single-example release seeding), isolated Python/native runtime provisioning, native OS dialogs (`rfd`), sanitized diagnostic bundle export/reporting (`diagnostics`), SHA-256-verified self-updates (`updater`), and worker lifecycle supervision.
+
+For `/apps/<app-id>/` HTTP requests, `jetpack-daemon` checks `<root>/apps/<app-id>/<active_version>/ui/` first (enforcing path canonicalization and symlink-escape rejection, with MPA `<subpath>/index.html` and extensionless SPA fallback to `ui/index.html`) and falls back to the cascading Control Center bundle (`JETPACK_WEB_DIST_DIR`, `<root>/ui/dist/`, `./web/dist/`, embedded `ControlCenterAssets`) only when `<app-dir>/ui/` does not exist.
 
 No browser client ever communicates directly with a worker socket or pipe. `jetpack-daemon` decrypts incoming WebSocket frames, authorizes the session `Origin` against the target application, and forwards plaintext hybrid frames over local kernel IPC only to the authorized worker job.
 
@@ -62,8 +65,8 @@ Each launched job executes inside a dedicated per-job workspace (`<root>/workspa
 
 * `JETPACK_IPC_ENDPOINT`: local Unix Domain Socket (`ipc.sock`) or Windows Named Pipe (`\\.\pipe\jetpack-worker-<job_id>`).
 * `JETPACK_PROXY_ENDPOINT` / `HTTP_PROXY` / `ALL_PROXY`: userspace network proxy endpoint when `permissions.network_allowlist` is non-empty.
-* `JETPACK_VOL_<NAME>`: sandbox-mounted paths for user-selected host folders declared in `[volumes.<name>]`.
-* Hermetic `PATH` prepended with `<root>/runtimes/<name>-<version>/bin` for declared `[runtimes]` dependencies.
+* `JETPACK_VOL_<NAME>`: sandbox-mounted paths for user-selected host folders declared in `volumes.<name>`.
+* Hermetic `PATH` prepended with `<root>/runtimes/<name>-<version>/bin` for declared `runtimes` dependencies.
 
 ## User-Space Directory Layout (`JetPackPaths`)
 
@@ -80,12 +83,13 @@ You can override the root directory hermetically for testing or portable install
 ```text
 <JETPACK_ROOT>/
 ├── config/
-│   ├── daemon.toml              # Daemon bind address, port, logging, [updates], and [diagnostics] configuration
+│   ├── daemon.toml              # Daemon bind address, port, logging, updates, and diagnostics configuration
 │   ├── paired_clients.db        # ChaCha20-Poly1305 AEAD encrypted SQLite DB (paired clients, authorized_volumes, settings)
 │   └── pairing.ipc              # Local IPC socket/metadata for single-instance URI forwarding
 ├── logs/
 │   ├── daemon.log               # Persistent UTF-8 tracing log (redacted in diagnostic exports)
 │   └── jetpack-diagnostics-*.zip# Optional user-exported sanitized diagnostic bundles
+├── webview-data/                # Persistent wry WebView storage (localStorage pairing keys & cache)
 ├── blobs/
 │   └── sha256/
 │       ├── <hex>                # Content-Addressable OCI layer/config/manifest blobs
@@ -95,7 +99,7 @@ You can override the root directory hermetically for testing or portable install
 │   ├── python/                  # Managed python-build-standalone distributions
 │   └── <name>-<version>/bin/    # Verified shared native runtimes (e.g., ffmpeg-9.0.2)
 ├── apps/
-│   └── <app-id>/<version>/      # Deduplicated app bundles (hardlinks / APFS clones) + .venv
+│   └── <app-id>/<version>/      # Deduplicated app bundles (hardlinks / APFS clones), optional ui/ static bundle, and .venv
 ├── workspaces/
 │   └── job_<uuid>/              # Ephemeral per-job sandbox RW directory + ipc.sock
 ├── updates/                     # Verified release downloads, SHA256SUMS.txt, and staging dirs (mode 0700)

@@ -54,9 +54,11 @@ Because workers run without direct network interfaces (`CLONE_NEWNET` on Linux, 
 
 ```toml
 [permissions]
+model_cache = true
 network_allowlist = [
-  "huggingface.co:443",
-  "*.huggingface.co:443",
+  "preset:huggingface",
+  # Expands to:
+  # "huggingface.co:443", "*.huggingface.co:443", "hf.co:443", "*.hf.co:443", "*.xethub.hf.co:443"
 ]
 ```
 
@@ -80,4 +82,24 @@ with JetPackClient() as client:
             data = resp.read()
 ```
 
-Requests to any `host:port` not matching `network_allowlist` (or targeting loopback daemon ports) are blocked immediately with `403 Forbidden` by the in-daemon Rust proxy and recorded in the security audit log.
+### Streaming Downloads, Redirect Chains, and Blocked-Host Diagnostics
+
+* **Zero-buffering multi-GB streaming**: `UserspaceProxy` enforces a `30s` upstream connect timeout without capping active transfer duration, streams tunnels with fixed `64 KiB` directional buffers (`tokio::io::copy_bidirectional_with_sizes`), and refreshes worker idle-activity heartbeats during active transfers so multi-gigabyte model downloads (Whisper, Flux, RMBG, TTS) do not trip the idle reaper.
+* **Redirect-chain protection**: Supports HTTP headers up to `64 KiB` (accommodating long presigned S3/LFS CDN redirect URLs and returning `431 Request Header Fields Too Large` on overflow) and enforces `Connection: close` on plain HTTP forwarding so every hop re-validates `network_allowlist`.
+* **Actionable diagnostics**: Requests to any `host:port` not matching `network_allowlist` (or targeting loopback daemon ports) are blocked immediately with `403 Forbidden`, include an `X-Jetpack-Blocked-Target: <host>:<port>` response header, and emit a `WARN` event in `<root>/logs/daemon.log` and the Developer Mode live terminal showing the exact domain/wildcard or `"preset:huggingface"` rule to add in `app.toml`.
+
+## 3. Persistent AI Model Cache (`permissions.model_cache`)
+
+Because per-job workspaces (`<root>/workspaces/job_<id>`) are ephemeral and app bundles (`<root>/apps/<app-id>/<version>`) are read-only and replaced on updates, heavy AI workers should opt into the shared persistent model cache in `app.toml`:
+
+```toml
+[permissions]
+model_cache = true
+network_allowlist = ["preset:huggingface"]
+```
+
+When `model_cache = true`:
+
+* `jetpack-daemon` prepares `<root>/cache/models` (with `0o700` permissions on Unix) plus `huggingface/` and `torch/` subdirectories and mounts `<root>/cache/models` **read-write** into the OS sandbox (Seatbelt, AppContainer NTFS ACL, or `bwrap` + Landlock).
+* The worker environment receives `JETPACK_MODEL_CACHE_DIR=<root>/cache/models`, `HF_HOME=<root>/cache/models/huggingface`, and `TORCH_HOME=<root>/cache/models/torch`.
+* When `model_cache = false` (the default), `<root>/cache/models` remains inaccessible under the sandbox default-deny policy and these variables are not injected.

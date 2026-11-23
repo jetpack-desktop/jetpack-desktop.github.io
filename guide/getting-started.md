@@ -21,9 +21,9 @@ This guide walks through building `jetpack-daemon`, inspecting your host hardwar
   * **macOS (`darwin/arm64`)**: Apple Silicon with Xcode Command Line Tools (`Metal.framework` is detected automatically).
   * **Linux (`linux/amd64`)**: `bubblewrap` (`bwrap`) installed with unprivileged user namespaces enabled, plus a kernel supporting Landlock LSM (`Linux 5.13+`).
 
-## 1. Build the Daemon and Embedded Control Center
+## 1. Build the Daemon, CLI, and Embedded Control Center
 
-Build the WASM client, compile the Control Center frontend (`web/dist/`), and produce the single `jetpack-daemon` release binary:
+Build the WASM client, compile the Control Center frontend (`web/dist/`), and produce both `jetpack-daemon` and the `jetpack` CLI (including `jetpack mcp`) release binaries:
 
 ```bash
 make web-install

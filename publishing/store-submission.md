@@ -22,36 +22,48 @@ jetpack-daemon --validate-manifest ./workers/my-ocr-worker/app.toml
 ### Step 2: Package an OCI Image Layout v1.0.0 Bundle
 
 ```bash
-jetpack-daemon \
-  --package-app ./workers/my-ocr-worker \
+jetpack package ./workers/my-ocr-worker \
   --out ./dist/my-ocr-worker-oci \
   --oci-ref ghcr.io/your-org/my-ocr-worker:0.1.0
 ```
+
+*(Equivalent daemon invocation: `jetpack-daemon --package-app ./workers/my-ocr-worker --out ./dist/my-ocr-worker-oci --oci-ref ghcr.io/your-org/my-ocr-worker:0.1.0`.)*
 
 Output bundle structure:
 
 ```text
 dist/my-ocr-worker-oci/
 ├── oci-layout               # { "imageLayoutVersion": "1.0.0" }
-├── index.json               # Multi-arch OciImageIndex matching [hardware].architectures
+├── index.json               # Root entry with org.opencontainers.image.ref.name tag annotation
 └── blobs/sha256/
     ├── <layer_sha256>       # Deterministic .tar.gz with POSIX '/' paths, 0755 entrypoints
     ├── <config_sha256>      # OCI image config JSON with rootfs.diff_ids & io.jetpack.app.* labels
     ├── <manifest_sha256>... # Per-platform OciImageManifest blobs
-    └── <index_sha256>       # Multi-arch OciImageIndex blob (when architectures.len() > 1)
+    └── <index_sha256>       # Multi-arch OciImageIndex blob (when multiple architectures are declared)
 ```
 
-The command prints `manifest_sha256` and a ready-to-edit `CatalogAppEntry` JSON block to stdout.
+The command prints `manifest_sha256`, the ready-to-run `oras cp --from-oci-layout` push command, `oras manifest fetch --descriptor` verification command, and a `CatalogAppEntry` JSON block to stdout.
 
-### Step 3: Push with `oras` & Verify Digest
+### Step 3: Push to `ghcr.io` with `oras` & Verify Digest
 
-Push the OCI Image Layout directory to your registry:
+Ensure your GHCR package visibility is set to **Public** (JetPack Store installs pull anonymously via `ghcr.io/token`), then push using the exact tag printed by `jetpack package`:
 
 ```bash
-oras cp --from-oci-layout ./dist/my-ocr-worker-oci:latest ghcr.io/your-org/my-ocr-worker:0.1.0
+oras cp --from-oci-layout ./dist/my-ocr-worker-oci:0.1.0 ghcr.io/your-org/my-ocr-worker:0.1.0
+oras manifest fetch --descriptor ghcr.io/your-org/my-ocr-worker:0.1.0
 ```
 
-> **Important:** Confirm that the pushed remote manifest digest matches `manifest_sha256`. If your registry or push tool re-serializes the manifest or index, update `manifest_sha256` in `CatalogAppEntry` to match the exact remote digest before signing the catalog.
+> **Important:** Confirm that the remote `digest` printed by `oras manifest fetch --descriptor` matches `manifest_sha256` from `jetpack package`. If your registry or push tool re-serializes the manifest or index, update `manifest_sha256` in `CatalogAppEntry` to match the exact remote digest before signing the catalog.
+
+Verify end-to-end anonymous pull, SHA-256 verification, and Tar-Slip-safe unpacking from `ghcr.io`:
+
+```bash
+jetpack-daemon \
+  --oci-remote-smoke-test ghcr.io/your-org/my-ocr-worker:0.1.0 \
+  --expected-digest sha256:<64-hex>
+```
+
+For CI/CD automation, see [GitHub Actions Publishing to GHCR](/publishing/ghcr-workflow) (`examples/publish-app-ghcr.yml`).
 
 Populate `category`, `icon_svg`, and `allowed_origins` (for example `["https://studio.example.com"]`) in the `CatalogAppEntry` JSON object.
 

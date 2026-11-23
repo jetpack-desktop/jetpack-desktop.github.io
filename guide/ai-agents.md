@@ -28,7 +28,60 @@ The standalone console CLI `jetpack` (`crates/jetpack-cli`) includes a Model Con
 
 ### Client Configuration (`mcpServers`)
 
-Add the following configuration to **Claude Code** (`.mcp.json` or `~/.claude.json`), **Cursor** (`.cursor/mcp.json`), or **Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
+Every official JetPack release bundle includes the `jetpack` CLI alongside `jetpack-daemon`, so you can point your MCP client directly at the installed binary without building from source.
+
+Add the appropriate configuration for your OS to **Claude Code** (`.mcp.json` or `~/.claude.json`), **Cursor** (`.cursor/mcp.json` or `~/.cursor/mcp.json`), **Windsurf** (`~/.codeium/windsurf/mcp_config.json`), or any MCP-compatible IDE:
+
+#### macOS (`darwin/arm64`)
+
+When `JetPack.app` is installed in `/Applications`:
+
+```json
+{
+  "mcpServers": {
+    "jetpack": {
+      "command": "/Applications/JetPack.app/Contents/MacOS/jetpack",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+*(If you placed `JetPack.app` in `~/Applications`, use `/Users/<you>/Applications/JetPack.app/Contents/MacOS/jetpack`.)*
+
+#### Windows (`windows/amd64`)
+
+When `JetPack-windows-x64.zip` is extracted into `%LOCALAPPDATA%\JetPack\`:
+
+```json
+{
+  "mcpServers": {
+    "jetpack": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\JetPack\\jetpack.exe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### Linux (`linux/amd64`)
+
+When `JetPack-linux-x64.tar.gz` is extracted into `~/.local/opt/jetpack/`:
+
+```json
+{
+  "mcpServers": {
+    "jetpack": {
+      "command": "/home/<you>/.local/opt/jetpack/jetpack",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### Using `PATH` or Building from Source
+
+If `jetpack` is on your shell `PATH` (for example via `cargo install --path crates/jetpack-cli` or a symlink in `/usr/local/bin` / `~/.local/bin`), or if you are testing an unreleased local build (`target/release/jetpack`):
 
 ```json
 {
@@ -41,7 +94,7 @@ Add the following configuration to **Claude Code** (`.mcp.json` or `~/.claude.js
 }
 ```
 
-If `jetpack` is not on your shell `PATH`, point `"command"` to the built binary (for example `target/release/jetpack` on macOS/Linux or `C:\\Users\\<you>\\AppData\\Local\\JetPack\\jetpack.exe` on Windows).
+> **Note:** Regardless of where `jetpack` is invoked from, `jetpack mcp` automatically discovers and communicates with your active `jetpack-daemon` via `<JETPACK_HOME>/config/pairing.ipc` (including when the daemon was launched from `/Applications/JetPack.app`, `%LOCALAPPDATA%\JetPack\jetpack-daemon.exe`, or `~/.local/opt/jetpack/jetpack-daemon`), and `jetpack install-local` / `jetpack package` automatically use the sibling `jetpack-daemon` binary in the same directory.
 
 ### Exposed MCP Tools
 

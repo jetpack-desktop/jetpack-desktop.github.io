@@ -75,8 +75,9 @@ mode = "read-write"
 
 [permissions]
 gpu_access = true
+model_cache = true
 filesystem_scopes = ["cache"]
-network_allowlist = ["huggingface.co:443"]
+network_allowlist = ["preset:huggingface"]
 max_memory_mb = 4096
 
 [execution]
@@ -161,8 +162,9 @@ JETPACK_LOG_LEVEL = "info"
 | Field | Type | Default | Validation Rules |
 | :--- | :--- | :--- | :--- |
 | `filesystem_scopes` | `string[]` | `[]` | Relative subdirectories inside the job workspace (no `/`, `..`, `~`, or drive prefixes). |
-| `network_allowlist` | `string[]` | `[]` | Allowed `host:port` endpoints for the Userspace Proxy (wildcards `*`, `0.0.0.0:*`, and loopback daemon ports rejected). |
+| `network_allowlist` | `string[]` | `[]` | Allowed `host:port` endpoints, bracketed IPv6 literals, or `"preset:huggingface"` for the Userspace Proxy (unknown `preset:*`, wildcards `*`/`0.0.0.0:*`, and loopback daemon ports rejected). |
 | `gpu_access` | `bool` | `false` | Enables OS GPU driver/device access (`AGXDeviceUserClient`, `/dev/dri`, `/dev/nvidia*`, CUDA, DirectML). |
+| `model_cache` | `bool` | `false` | Mounts persistent `<root>/cache/models` read-write and injects `JETPACK_MODEL_CACHE_DIR`, `HF_HOME`, and `TORCH_HOME`. |
 | `max_memory_mb` | `u64` | `None` | Optional memory ceiling in MiB (must be `> 0` if set). |
 
 ### 8. `[execution]` (Required)
