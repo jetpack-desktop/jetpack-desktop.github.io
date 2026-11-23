@@ -1,0 +1,40 @@
+# JetPack
+
+> Local Compute & Native App Orchestrator — Native GPU speed inside OS-level kernel sandboxes without VMs.
+
+A lightweight Rust tray orchestrator (~5–10 MB) bridging WebAssembly frontends to OS-sandboxed native & Python workers over encrypted zero-copy binary WebSockets.
+
+## Table of Contents
+
+### Guide
+
+- [Introduction & Philosophy](https://jetpack-desktop.github.io/guide/introduction.md): Why JetPack replaces heavy Docker/VMs with native GPU compute inside unprivileged OS kernel sandboxes.
+- [Architecture & User Space](https://jetpack-desktop.github.io/guide/architecture.md): Three-tier userspace architecture spanning browser WASM clients, the 127.0.0.1 Rust gatekeeper daemon, and kernel-sandboxed native/Python workers.
+- [Getting Started](https://jetpack-desktop.github.io/guide/getting-started.md): Build jetpack-daemon and the jetpack CLI, probe host GPUs, start the tray daemon, and open Control Center on 127.0.0.1:9470.
+- [AI Agents & MCP Integration](https://jetpack-desktop.github.io/guide/ai-agents.md): Connect AI coding agents via llms-full.txt, the local jetpack mcp stdio server, AGENTS.md scaffolding, built-in Agent Skills, and jetpack codegen.
+
+### Security Audit
+
+- [Security Overview](https://jetpack-desktop.github.io/security/overview.md): Threat model and four-layer defense-in-depth boundaries protecting loopback 127.0.0.1 compute from untrusted web origins.
+- [Pairing & Cryptography](https://jetpack-desktop.github.io/security/pairing-and-crypto.md): Out-of-Band jetpack://pair authorization, X25519/Ed25519 handshake, ChaCha20-Poly1305 session frames, and encrypted paired_clients.db storage.
+- [OS Kernel Sandboxing & Network Isolation](https://jetpack-desktop.github.io/security/os-sandboxing.md): OS-native kernel sandboxing matrix across Windows AppContainer, macOS Seatbelt, and Linux Bubblewrap + Landlock with userspace network proxy.
+- [Signed Catalog & Anti-Spoofing](https://jetpack-desktop.github.io/security/signed-catalog.md): Ed25519 SignedAppCatalog verification, SHA-256 OCI CAS digest enforcement, and local dev anti-spoofing guarantees.
+
+### Frontend SDK
+
+- [Frontend Quickstart (`@jetpack/client`)](https://jetpack-desktop.github.io/sdk/frontend/quickstart.md): Connect, auto-pair, provision workers, and exchange zero-copy binary frames from browser TypeScript with @jetpack/client.
+- [Frontend API Reference](https://jetpack-desktop.github.io/sdk/frontend/api-reference.md): Complete TypeScript API reference for @jetpack/client (JetPackAppClient, JetPackOpcodeMap typed contracts, ControlBar, LogTerminal) and low-level jetpack-wasm bindings.
+- [Binary Framing Protocol](https://jetpack-desktop.github.io/sdk/frontend/binary-framing.md): Hybrid zero-copy binary framing protocol combining compact MsgPack headers with raw binary payloads and ChaCha20-Poly1305 AEAD.
+
+### Worker SDK
+
+- [Python Worker SDK (`jetpack_sdk`) & GPU Wheels](https://jetpack-desktop.github.io/sdk/worker/python-sdk.md): Zero-dependency Python Worker SDK (jetpack_sdk), memoryview zero-copy framing, optional @opcode contract decorators, and hermetic uv GPU wheel provisioning.
+- [Native Portable Runtimes](https://jetpack-desktop.github.io/sdk/worker/native-runtimes.md): Declare SHA-256 verified portable native runtimes such as FFmpeg and llama.cpp in app.toml without polluting host PATH.
+- [Volumes & Userspace Networking](https://jetpack-desktop.github.io/sdk/worker/volumes-and-network.md): User-directed host folder mounting via rfd and host-enforced outbound allowlist proxying via JETPACK_PROXY_ENDPOINT.
+
+### Publishing & CLI
+
+- [Manifest Reference (`app.toml`)](https://jetpack-desktop.github.io/publishing/manifest-reference.md): Strict app.toml manifest schema reference covering package, hardware, runtimes, python_env, services, volumes, permissions, and execution.
+- [CLI Tools Reference](https://jetpack-desktop.github.io/publishing/cli-tools.md): Reference for the console jetpack developer CLI (init, mcp, codegen, validate, install-local, package) and jetpack-daemon runtime/signing flags.
+- [Store Submission & Catalog Signing](https://jetpack-desktop.github.io/publishing/store-submission.md): Package validated workers into multi-arch OCI Image Layout bundles, push to registries, and sign catalog.signed.json with Ed25519.
+
