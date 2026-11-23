@@ -143,6 +143,7 @@ jetpack-daemon --sign-catalog crates/jetpack-daemon/assets/catalog.signed.json -
 
 | Flag | Purpose |
 | :--- | :--- |
+| `--version, -V` | Print the compiled `jetpack-daemon` semantic version and exit cleanly. |
 | `--headless` | Run `jetpack-daemon` without a desktop system tray icon (CI / server). |
 | `--seed-core-apps` | Package and pre-install curated core workers from `examples/` (e.g., slim release bundle `examples/ffmpeg-media-converter`, excluding `.venv`, `__pycache__`, `tests`, and media files) into CAS and `<root>/apps/`. |
 | `--export-diagnostics [--out <path>]` | Collect a sanitized `.zip` diagnostic bundle (`diagnostics.json` + redacted `daemon.log` tail) and write it to `<path>` or `<root>/logs/jetpack-diagnostics-<timestamp>.zip`. |
