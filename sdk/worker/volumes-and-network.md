@@ -103,3 +103,21 @@ When `model_cache = true`:
 * `jetpack-daemon` prepares `<root>/cache/models` (with `0o700` permissions on Unix) plus `huggingface/` and `torch/` subdirectories and mounts `<root>/cache/models` **read-write** into the OS sandbox (Seatbelt, AppContainer NTFS ACL, or `bwrap` + Landlock).
 * The worker environment receives `JETPACK_MODEL_CACHE_DIR=<root>/cache/models`, `HF_HOME=<root>/cache/models/huggingface`, and `TORCH_HOME=<root>/cache/models/torch`.
 * When `model_cache = false` (the default), `<root>/cache/models` remains inaccessible under the sandbox default-deny policy and these variables are not injected.
+
+## 4. Isolated Persistent App Home (`JETPACK_APP_HOME` / `APP_HOME`)
+
+Every installed application automatically receives its own private, persistent read-write data directory at `<appdata_root>/<app_id>` (`<root>/appdata/<app_id>` by default, `0o700` on Unix) without requiring any `[volumes.<name>]` declaration or native folder-picker prompt:
+
+* **Provisioned automatically**: Created during installation (`app.pull`, `install-local`, core app seeding) and verified before every worker launch.
+* **Per-app kernel isolation**: Each worker's OS sandbox grants read/write access only to its own `<appdata_root>/<app_id>` folder while keeping sibling `<appdata_root>/<other_app_id>` directories and `<appdata_root>` listings inaccessible.
+* **Worker environment & Python SDK**: Inside the sandbox, `jetpack-daemon` unconditionally sets both `JETPACK_APP_HOME` and `APP_HOME` to `<appdata_root>/<app_id>`. In Python workers, `client.app_home` returns a `pathlib.Path` pointing directly to this directory:
+
+```python
+from jetpack_sdk import JetPackClient
+
+with JetPackClient() as client:
+    db_path = client.app_home / "state.sqlite3"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+```
+
+* **User-configurable root folder**: Users can relocate `<appdata_root>` anytime under **My Hardware & Security -> App Data Folder** in Control Center (**"Choose Folder..."** invokes the daemon's main-thread native `rfd` picker; **"Reset to Default"** restores `<root>/appdata`). Uninstalling the JetPack daemon only removes internal JetPack state and leaves custom external `appdata_dir` folders untouched.

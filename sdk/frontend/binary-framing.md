@@ -83,7 +83,8 @@ Where `frame_len = 4 + N + M`. This allows Python workers (`memoryview`) and Rus
 | `app.volumes.reset` | `app.volumes.reset.ok`, `app.error` | `AppVolumesResetRequest` -> `reset_count` |
 | `app.terminate` | `app.terminate.ok`, `app.error` | `AppTerminateRequest` -> OK |
 | `client.list` / `client.revoke` | `client.list.ok` / `client.revoke.ok` | Client management |
-| `settings.get` / `settings.set` | `settings.get.ok` / `settings.ok` | `DaemonSettings` (`developer_mode`, `open_in_app_window`, `open_dashboard_on_startup`, `daemon_version`) |
+| `settings.get` / `settings.set` | `settings.get.ok` / `settings.ok` | `DaemonSettings` (`developer_mode`, `open_in_app_window`, `open_dashboard_on_startup`, `daemon_version`, `appdata_dir`); `settings.set` accepts optional `reset_appdata_dir: bool` (loopback only) |
+| `settings.pick_appdata_dir` | `settings.ok`, `app.error` | Loopback-only (`127.0.0.1` / `localhost`). Opens native main-thread OS folder picker (`rfd`), creates and persists `appdata_dir`, and returns updated `DaemonSettings` |
 | `ui.open_url` | `ui.open_url.ok`, `app.error` | `UiOpenUrlRequest` -> `UiOpenUrlOkResponse` (loopback origins & loopback HTTP targets only) |
 | `update.check` | `update.status`, `app.error` | Empty -> `UpdateStatusResponse` |
 | `update.apply` | `update.progress`, `update.restarting`, `app.error` | `UpdateApplyRequest` -> Progress / Restarting (Control Center origin only) |

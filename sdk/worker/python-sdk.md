@@ -39,6 +39,7 @@ with JetPackClient() as client:
 * `read_frame(timeout: Optional[float] = None) -> Optional[HybridFrame]`: Reads the next `[4B frame_len] + [4B header_len] + [MsgPack Header] + [Raw Payload]` frame; returns `None` on EOF.
 * `send(frame: HybridFrame) -> None`: Serializes and writes a `HybridFrame`.
 * `send_frame(opcode, payload=b"", channel_id=0, correlation_id=None, target_worker=None) -> None`: Convenience wrapper constructing `FrameHeader` + `HybridFrame`.
+* `app_home -> Path`: Property returning the app's persistent isolated private data directory from `JETPACK_APP_HOME` (`<appdata_root>/<app_id>`), pre-mounted read-write on launch without any `rfd` prompt (raises `RuntimeError` if unset or empty).
 * `proxy_endpoint -> Optional[str]`: Property returning `JETPACK_PROXY_ENDPOINT` / `HTTP_PROXY` / `ALL_PROXY` when outbound network rules are granted.
 * `@opcode(name, *, request=None, response=None, binary=False, stream=False)` (or `@client.opcode(...)`) and `get_opcode_metadata(fn)`: Optional zero-dependency decorator (`sdks/python/jetpack_sdk/decorators.py`) attaching `__jetpack_opcode__` metadata inspected by `jetpack codegen` to generate `JetPackOpcodeMap` TypeScript contracts.
 
