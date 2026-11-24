@@ -15,7 +15,7 @@ JetPack enforces a hard security boundary between **Verified App Store Catalog**
 
 * Outside `#[cfg(test)]`, `CATALOG_VERIFY_PUBKEY` is strictly immutable and cannot be overridden by `daemon.toml`, environment variables, or WebSocket control-plane opcodes.
 * Before trusting any catalog entry (remote, cached, or embedded), `SignedAppCatalog::from_signed_json_and_verify` computes the canonical payload bytes (`SignedAppCatalog::canonical_payload_bytes()`, covering `version`, ordered `apps` entries, and `coming_soon`) and verifies `ed25519_signature` using `ed25519-dalek`.
-* Any tampering with `oci_reference`, `manifest_sha256`, `allowed_origins`, `coming_soon`, `version`, or `min_vram_mb`—or a signature produced by an untrusted keypair—fails immediately with `JetPackError::CatalogSignatureInvalid`.
+* Any tampering with `oci_reference`, `manifest_sha256`, `allowed_origins`, `launch_url`, `poster_url`, `coming_soon`, `version`, or `min_vram_mb`—or a signature produced by an untrusted keypair—fails immediately with `JetPackError::CatalogSignatureInvalid`. Optional `poster_url` values must use `'self'`-relative paths (`/posters/...` without `..` or `//`) or `https://` URLs without userinfo.
 
 ## 2. Remote Catalog Refresh, Verified Caching & Offline Fallback
 

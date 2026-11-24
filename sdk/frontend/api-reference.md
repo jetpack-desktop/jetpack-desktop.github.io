@@ -223,7 +223,7 @@ Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
 | `JetPackWasmClient.connect(wsUrl, identity, origin?)` | `Promise<JetPackWasmClient>` | Opens binary WebSocket (`arraybuffer`) and executes `ClientHello` / `ServerHello` handshake. |
 | `is_connected()` | `boolean` | Returns `true` when in `Established` encrypted session state. |
 | `get_hardware_profile()` | `Promise<HardwareProfile>` | Sends `hardware.get_profile` and resolves with CPU, RAM/unified memory, and GPU device details. |
-| `get_catalog()` | `Promise<CatalogAppEntry[]>` | Fetches verified entries from the active `SignedAppCatalog` (refreshed via `catalog_url` with cached/embedded fallback), including `coming_soon?: boolean` and `launch_url?: string \| null`. |
+| `get_catalog()` | `Promise<CatalogAppEntry[]>` | Fetches verified entries from the active `SignedAppCatalog` (refreshed via `catalog_url` with cached/embedded fallback), including `coming_soon?: boolean`, `launch_url?: string \| null`, and `poster_url?: string \| null`. |
 | `list_apps()` | `Promise<AppInfo[]>` | Lists installed apps with `status`, `is_verified`, and sanitized `volumes` (`folder_name`, `is_configured`—never host paths). |
 | `pull_app(imageRef, onProgress?, appId?)` | `Promise<AppPullOkResponse>` | Pulls a catalog-verified OCI app and streams `app.pull.progress` events (`percent` may be `number \| null`). |
 | `launch_app(appId, resetVolumes?, onProgress?)` | `Promise<AppLaunchOkResponse>` | Starts sandboxed worker (`resetVolumes` forces fresh `rfd` folder prompts). Optional `onProgress` receives `app.launch.progress` events (`runtime_download`, `runtime_extract`, `uv_bootstrap`, `python_standalone`, `uv_sync`, `sandbox_launch`) while remaining compatible with 1- and 2-argument calls. |
