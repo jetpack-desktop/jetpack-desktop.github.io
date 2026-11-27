@@ -110,6 +110,6 @@ Before connecting an external web app or publishing workers, you can verify the 
 
 ## Next Steps
 
-* Connect a web app using the [@jetpack/client Quickstart](/sdk/frontend/quickstart).
+* Connect a web app using the [@jetpack-desktop/client Quickstart](/sdk/frontend/quickstart).
 * Scaffold your first Python worker with `--init-app` in the [CLI Tools Reference](/publishing/cli-tools).
 * Inspect the cryptographic and sandbox guarantees in [Security Overview](/security/overview).

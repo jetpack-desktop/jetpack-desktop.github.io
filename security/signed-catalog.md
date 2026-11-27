@@ -19,7 +19,7 @@ JetPack enforces a hard security boundary between **Verified App Store Catalog**
 
 ## 2. Remote Catalog Refresh, Verified Caching & Offline Fallback
 
-`DaemonConfig` (`<root>/config/daemon.toml`) configures an optional top-level `catalog_url` defaulting to `https://raw.githubusercontent.com/jetpack-io/jetpack/main/crates/jetpack-daemon/assets/catalog.signed.json` (setting `catalog_url = ""` disables remote fetches cleanly for air-gapped setups). Non-empty URLs must use `https://` (or loopback `http://127.0.0.1` / `localhost` / `::1` for local testing).
+`DaemonConfig` (`<root>/config/daemon.toml`) configures an optional top-level `catalog_url` defaulting to `https://raw.githubusercontent.com/jetpack-desktop/jetpack/main/crates/jetpack-daemon/assets/catalog.signed.json` (setting `catalog_url = ""` disables remote fetches cleanly for air-gapped setups). Non-empty URLs must use `https://` (or loopback `http://127.0.0.1` / `localhost` / `::1` for local testing).
 
 When an authenticated client requests `"catalog.get"`:
 

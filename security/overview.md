@@ -22,7 +22,7 @@ JetPack exposes local native hardware and OS-level compute to web applications r
 
 ### Rust as the Sole Gatekeeper
 
-Browser code (`@jetpack/client` / `jetpack-wasm`) **never** opens sockets or named pipes directly to Python or C++ workers. All external traffic terminates inside `jetpack-daemon` (`crates/jetpack-daemon/src/ws_server.rs`), which:
+Browser code (`@jetpack-desktop/client` / `jetpack-wasm`) **never** opens sockets or named pipes directly to Python or C++ workers. All external traffic terminates inside `jetpack-daemon` (`crates/jetpack-daemon/src/ws_server.rs`), which:
 
 1. Refuses to bind to `0.0.0.0`, `::`, or any non-loopback IP address before opening a TCP listener.
 2. Validates the normalized HTTP `Origin` header on both `OPTIONS` Private Network Access preflights and WebSocket `GET` upgrades against `paired_clients.db` (or the daemon's own Control Center origin `http://127.0.0.1:<port>`). Rejects unknown or missing origins with `HTTP/1.1 403 Forbidden`.

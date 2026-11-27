@@ -57,7 +57,7 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
 ```text
 +-----------------------------------------------------------------------------+
 | Tier 1: Browser / WASM Frontend                                             |
-|   @jetpack/client (TypeScript) -> jetpack-wasm (wasm32-unknown-unknown)     |
+|   @jetpack-desktop/client (TypeScript) -> jetpack-wasm (wasm32-unknown-unknown)     |
 |   - Persistent Ed25519 / X25519 identity in localStorage                    |
 |   - Out-of-Band pairing via jetpack://pair                                  |
 |   - Encrypted binary WebSocket client (ws://127.0.0.1:9470)                 |
@@ -90,9 +90,9 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
 +-----------------------------------------------------------------------------+
 ```
 
-### Tier 1: WASM Frontend (`jetpack-wasm` & `@jetpack/client`)
+### Tier 1: WASM Frontend (`jetpack-wasm` & `@jetpack-desktop/client`)
 
-Web applications (including standalone MPA/SPA UIs hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
+Web applications (including standalone MPA/SPA UIs hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack-desktop/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
 
 ### Tier 2: Rust Tray Gatekeeper (`jetpack-daemon`)
 
@@ -158,7 +158,7 @@ You can override the root directory hermetically for testing or portable install
 | `crates/jetpack-common` | `AppManifest` (`app.toml`) strict parser/validator, `DaemonConfig`, `JetPackPaths`, and shared errors |
 | `crates/jetpack-daemon` | Tray agent, `127.0.0.1:9470` WS/Control Center + standalone MPA server, ChaCha20-Poly1305 encrypted SQLite store (`rusqlite` `bundled`), pure-Rust TLS (`rustls-tls`), OCI/Python/runtime provisioners, OS sandboxes, and CLI tools |
 | `crates/jetpack-wasm` | `wasm-bindgen` browser SDK (`WasmClientIdentity`, `JetPackWasmClient`) |
-| `web/` | Embedded Control Center UI, standalone MPA web apps (`web/apps/*` -> `web/dist/`), and `@jetpack/client` TypeScript SDK (`web/packages/jetpack-client`) |
+| `web/` | Embedded Control Center UI, standalone MPA web apps (`web/apps/*` -> `web/dist/`), and `@jetpack-desktop/client` TypeScript SDK (`web/packages/jetpack-client`) |
 | `sdks/python/jetpack_sdk` | Lightweight Python worker IPC library (`JetPackClient`, `HybridFrame`, zero-copy reader) |
 
 ---
@@ -275,7 +275,7 @@ Before connecting an external web app or publishing workers, you can verify the 
 
 ## Next Steps
 
-* Connect a web app using the [@jetpack/client Quickstart](/sdk/frontend/quickstart).
+* Connect a web app using the [@jetpack-desktop/client Quickstart](/sdk/frontend/quickstart).
 * Scaffold your first Python worker with `--init-app` in the [CLI Tools Reference](/publishing/cli-tools).
 * Inspect the cryptographic and sandbox guarantees in [Security Overview](/security/overview).
 
@@ -290,7 +290,7 @@ description: >-
 
 # AI Agents & MCP Integration
 
-JetPack includes a complete AI-Agent Developer Experience (DX) suite designed so coding agents (**Claude Code**, **Cursor**, **Windsurf**, **OpenClaw**, and custom MCP clients) can scaffold, type-check, validate, and debug `@jetpack/client` + Python Worker applications with zero hallucinations.
+JetPack includes a complete AI-Agent Developer Experience (DX) suite designed so coding agents (**Claude Code**, **Cursor**, **Windsurf**, **OpenClaw**, and custom MCP clients) can scaffold, type-check, validate, and debug `@jetpack-desktop/client` + Python Worker applications with zero hallucinations.
 
 ## 1. LLM-Friendly Documentation (`llms.txt` & `llms-full.txt`)
 
@@ -387,7 +387,7 @@ If `jetpack` is on your shell `PATH` (for example via `cargo install --path crat
 | `get_daemon_status` | *(none)* | Checks `jetpack-daemon` health, version, bound `127.0.0.1` WebSocket port, reachability, paired origins, and active sandboxed workers via token-authenticated `pairing.ipc`. |
 | `read_worker_logs` | `app_id: string`, `lines?: number` (`1..2000`, default `100`) | Tails live or offline `worker.log` / `daemon.log` crash tracebacks and stdout/stderr for `app_id`, automatically redacting sensitive keys, tokens, and user paths. |
 | `validate_manifest` | `path: string` | Validates `app.toml` (or a directory containing `app.toml`) against the strict `#[serde(deny_unknown_fields)]` schema, permissions, volumes, runtimes, and `python_env`. |
-| `scaffold_app` | `target_dir: string`, `app_id?: string`, `template?: "python" \| "fullstack"` (default `"fullstack"`) | Generates a starter JetPack app with `app.toml`, `worker.py`, optional `@jetpack/client` TypeScript frontend, `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/jetpack.mdc`, and `.agents/skills/`. |
+| `scaffold_app` | `target_dir: string`, `app_id?: string`, `template?: "python" \| "fullstack"` (default `"fullstack"`) | Generates a starter JetPack app with `app.toml`, `worker.py`, optional `@jetpack-desktop/client` TypeScript frontend, `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/jetpack.mdc`, and `.agents/skills/`. |
 
 ## 3. Project Scaffolding Rules & Agent Skills (`jetpack init`)
 
@@ -397,7 +397,7 @@ Running `jetpack init` (or `jetpack-daemon --init-app`, or the `scaffold_app` MC
 # Python worker starter + AI rules & skills
 jetpack init ./workers/my-ocr-worker --template python
 
-# Fullstack TypeScript (@jetpack/client) + Python worker starter
+# Fullstack TypeScript (@jetpack-desktop/client) + Python worker starter
 jetpack init ./apps/my-ai-app --app-id com.dev.my-ai-app --template fullstack
 ```
 
@@ -408,7 +408,7 @@ jetpack init ./apps/my-ai-app --app-id com.dev.my-ai-app --template fullstack
 * **`.cursor/rules/jetpack.mdc`** — Cursor MDC rule file auto-attaching JetPack architecture constraints.
 * **`.agents/skills/`** — Step-by-step reusable Agent Skills:
   * `.agents/skills/create-jetpack-worker/SKILL.md` — Scaffolding, manifest setup, `jetpack validate`, and local installation.
-  * `.agents/skills/add-binary-opcode/SKILL.md` — Adding a Pydantic/typed Python worker handler, regenerating `jetpack-env.d.ts`, and calling it from `@jetpack/client`.
+  * `.agents/skills/add-binary-opcode/SKILL.md` — Adding a Pydantic/typed Python worker handler, regenerating `jetpack-env.d.ts`, and calling it from `@jetpack-desktop/client`.
   * `.agents/skills/debug-pairing/SKILL.md` — Diagnosing `127.0.0.1:9470` WebSocket pairing, `jetpack://pair` OOB approval, and worker launch errors via MCP.
 
 All AI instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.agents/`) and generated `jetpack-env.d.ts` declarations are automatically excluded when packaging OCI bundles via `jetpack package` or `jetpack-daemon --package-app`.
@@ -446,7 +446,7 @@ jetpack codegen --worker worker.py --out src/jetpack-env.d.ts --strict
 Then pass `JetPackOpcodeMap` as the generic parameter to `JetPackAppClient`:
 
 ```typescript
-import { JetPackAppClient } from '@jetpack/client';
+import { JetPackAppClient } from '@jetpack-desktop/client';
 import type { JetPackOpcodeMap } from './jetpack-env';
 
 const client = new JetPackAppClient<JetPackOpcodeMap>();
@@ -484,7 +484,7 @@ JetPack exposes local native hardware and OS-level compute to web applications r
 
 ### Rust as the Sole Gatekeeper
 
-Browser code (`@jetpack/client` / `jetpack-wasm`) **never** opens sockets or named pipes directly to Python or C++ workers. All external traffic terminates inside `jetpack-daemon` (`crates/jetpack-daemon/src/ws_server.rs`), which:
+Browser code (`@jetpack-desktop/client` / `jetpack-wasm`) **never** opens sockets or named pipes directly to Python or C++ workers. All external traffic terminates inside `jetpack-daemon` (`crates/jetpack-daemon/src/ws_server.rs`), which:
 
 1. Refuses to bind to `0.0.0.0`, `::`, or any non-loopback IP address before opening a TCP listener.
 2. Validates the normalized HTTP `Origin` header on both `OPTIONS` Private Network Access preflights and WebSocket `GET` upgrades against `paired_clients.db` (or the daemon's own Control Center origin `http://127.0.0.1:<port>`). Rejects unknown or missing origins with `HTTP/1.1 403 Forbidden`.
@@ -676,7 +676,7 @@ JetPack enforces a hard security boundary between **Verified App Store Catalog**
 
 ## 2. Remote Catalog Refresh, Verified Caching & Offline Fallback
 
-`DaemonConfig` (`<root>/config/daemon.toml`) configures an optional top-level `catalog_url` defaulting to `https://raw.githubusercontent.com/jetpack-io/jetpack/main/crates/jetpack-daemon/assets/catalog.signed.json` (setting `catalog_url = ""` disables remote fetches cleanly for air-gapped setups). Non-empty URLs must use `https://` (or loopback `http://127.0.0.1` / `localhost` / `::1` for local testing).
+`DaemonConfig` (`<root>/config/daemon.toml`) configures an optional top-level `catalog_url` defaulting to `https://raw.githubusercontent.com/jetpack-desktop/jetpack/main/crates/jetpack-daemon/assets/catalog.signed.json` (setting `catalog_url = ""` disables remote fetches cleanly for air-gapped setups). Non-empty URLs must use `https://` (or loopback `http://127.0.0.1` / `localhost` / `::1` for local testing).
 
 When an authenticated client requests `"catalog.get"`:
 
@@ -719,29 +719,29 @@ Remote paired origins (e.g. `https://app.example.com`) can never launch or send 
 url: https://jetpack-desktop.github.io/sdk/frontend/quickstart.md
 description: >-
   Connect, auto-pair, provision workers, and exchange zero-copy binary frames
-  from browser TypeScript with @jetpack/client.
+  from browser TypeScript with @jetpack-desktop/client.
 ---
 
-# Frontend Quickstart (`@jetpack/client`)
+# Frontend Quickstart (`@jetpack-desktop/client`)
 
-The `@jetpack/client` TypeScript package (`web/packages/jetpack-client`) provides `JetPackAppClient`, a high-level wrapper over `jetpack-wasm` that automates cryptographic identity management, Out-of-Band `jetpack://pair` onboarding, catalog pulls, worker launch, correlated binary requests, and streaming event subscriptions.
+The `@jetpack-desktop/client` TypeScript package (`web/packages/jetpack-client`) provides `JetPackAppClient`, a high-level wrapper over `jetpack-wasm` that automates cryptographic identity management, Out-of-Band `jetpack://pair` onboarding, catalog pulls, worker launch, correlated binary requests, and streaming event subscriptions.
 
 ## Installation
 
-Install `@jetpack/client` from NPM in any Vite, TypeScript, or modern ESM web project:
+Install `@jetpack-desktop/client` from NPM in any Vite, TypeScript, or modern ESM web project:
 
 ```bash
-npm install @jetpack/client
+npm install @jetpack-desktop/client
 ```
 
-`@jetpack/client` **bundles the compiled `jetpack-wasm` WebAssembly binary and JS glue directly inside the package** (`@jetpack/client/wasm`). External applications work out-of-the-box with zero manual WASM copying or path overrides—both `vite dev` (dependency pre-bundling) and `vite build` resolve the bundled `.wasm` module automatically.
+`@jetpack-desktop/client` **bundles the compiled `jetpack-wasm` WebAssembly binary and JS glue directly inside the package** (`@jetpack-desktop/client/wasm`). External applications work out-of-the-box with zero manual WASM copying or path overrides—both `vite dev` (dependency pre-bundling) and `vite build` resolve the bundled `.wasm` module automatically.
 
-If you host the `.wasm` binary on a custom CDN path or supply pre-loaded bindings, you can still pass `wasmModule`, `wasmModulePath`, or `wasmBinaryOrUrl` to `connectAndEnsureApp()`. To access low-level bindings directly, import from the `@jetpack/client/wasm` subpath export.
+If you host the `.wasm` binary on a custom CDN path or supply pre-loaded bindings, you can still pass `wasmModule`, `wasmModulePath`, or `wasmBinaryOrUrl` to `connectAndEnsureApp()`. To access low-level bindings directly, import from the `@jetpack-desktop/client/wasm` subpath export.
 
 ## 1. Connect, Pair, Pull, and Launch in One Call
 
 ```typescript
-import { JetPackAppClient, JetPackClientError } from '@jetpack/client';
+import { JetPackAppClient, JetPackClientError } from '@jetpack-desktop/client';
 
 const client = new JetPackAppClient();
 
@@ -877,22 +877,22 @@ When Developer Mode is enabled on the local daemon (`developer_mode === true`), 
 ---
 url: https://jetpack-desktop.github.io/sdk/frontend/api-reference.md
 description: >-
-  Complete TypeScript API reference for @jetpack/client (JetPackAppClient,
-  JetPackOpcodeMap typed contracts, ControlBar, LogTerminal) and low-level
-  jetpack-wasm bindings.
+  Complete TypeScript API reference for @jetpack-desktop/client
+  (JetPackAppClient, JetPackOpcodeMap typed contracts, ControlBar, LogTerminal)
+  and low-level jetpack-wasm bindings.
 ---
 
 # Frontend API Reference
 
-This page documents both the high-level TypeScript SDK (`@jetpack/client`) and the bundled `wasm-bindgen` bindings (`jetpack-wasm`, re-exported via `@jetpack/client/wasm`).
+This page documents both the high-level TypeScript SDK (`@jetpack-desktop/client`) and the bundled `wasm-bindgen` bindings (`jetpack-wasm`, re-exported via `@jetpack-desktop/client/wasm`).
 
 ```bash
-npm install @jetpack/client
+npm install @jetpack-desktop/client
 ```
 
-## High-Level SDK: `JetPackAppClient<TOpcodes>` (`@jetpack/client`)
+## High-Level SDK: `JetPackAppClient<TOpcodes>` (`@jetpack-desktop/client`)
 
-Source: `web/packages/jetpack-client/src/client.ts` and `types.ts`. By default, `JetPackAppClient` loads the bundled `@jetpack/client/wasm` module with zero configuration (`wasmModule`, `wasmModulePath`, and `wasmBinaryOrUrl` remain available as optional overrides).
+Source: `web/packages/jetpack-client/src/client.ts` and `types.ts`. By default, `JetPackAppClient` loads the bundled `@jetpack-desktop/client/wasm` module with zero configuration (`wasmModule`, `wasmModulePath`, and `wasmBinaryOrUrl` remain available as optional overrides).
 
 Pass a `JetPackOpcodeMap` interface generated by [`jetpack codegen`](/publishing/cli-tools#jetpack-codegen---worker-path---out-path---strict) (`new JetPackAppClient<JetPackOpcodeMap>()`) for compile-time validation of opcodes, metadata shapes, required `Uint8Array` payloads, response types, and `onStream()` listeners. Omitting the generic (`new JetPackAppClient()`) falls back to `DefaultOpcodeMap` and stays 100% backwards-compatible.
 
@@ -1096,12 +1096,12 @@ export type StreamCallback<TOpcode extends string = string, TPayload = unknown> 
 
 ***
 
-## Low-Level WASM Bindings (`@jetpack/client/wasm` / `jetpack-wasm`)
+## Low-Level WASM Bindings (`@jetpack-desktop/client/wasm` / `jetpack-wasm`)
 
-Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs` (bundled inside `@jetpack/client` under `@jetpack/client/wasm`).
+Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs` (bundled inside `@jetpack-desktop/client` under `@jetpack-desktop/client/wasm`).
 
 ```typescript
-import initWasm, { WasmClientIdentity, JetPackWasmClient } from '@jetpack/client/wasm';
+import initWasm, { WasmClientIdentity, JetPackWasmClient } from '@jetpack-desktop/client/wasm';
 
 await initWasm();
 ```
@@ -1787,7 +1787,7 @@ Scaffolds a ready-to-run JetPack project in `<target_dir>` with AI instructions 
 # Python worker starter (default)
 jetpack init ./workers/my-ocr-worker --template python
 
-# Fullstack TypeScript (@jetpack/client) + Python worker starter
+# Fullstack TypeScript (@jetpack-desktop/client) + Python worker starter
 jetpack init ./apps/my-ai-app --app-id com.dev.my-ai-app --template fullstack
 ```
 
@@ -1934,14 +1934,14 @@ jetpack-daemon --sign-catalog crates/jetpack-daemon/assets/catalog.signed.json -
 url: https://jetpack-desktop.github.io/publishing/sdk-publishing.md
 description: >-
   Build, verify in isolated consumers, synchronize versions, and publish
-  @jetpack/client (NPM) and jetpack-sdk (PyPI).
+  @jetpack-desktop/client (NPM) and jetpack-sdk (PyPI).
 ---
 
 # SDK Publishing (NPM & PyPI)
 
 Maintainers can build, verify in clean isolated environments, synchronize versions, and publish both official JetPack SDKs using repeatable user-space `Makefile` commands:
 
-* **Frontend SDK (`@jetpack/client`)** — `web/packages/jetpack-client`, bundling compiled `jetpack-wasm` (`crates/jetpack-wasm`) into `wasm/` and re-exporting it via `@jetpack/client/wasm` so external consumers require zero manual WASM path setup.
+* **Frontend SDK (`@jetpack-desktop/client`)** — `web/packages/jetpack-client`, bundling compiled `jetpack-wasm` (`crates/jetpack-wasm`) into `wasm/` and re-exporting it via `@jetpack-desktop/client/wasm` so external consumers require zero manual WASM path setup.
 * **Python Worker SDK (`jetpack-sdk`)** — `sdks/python`, built with `hatchling` (`sdist` + `py3-none-any` wheel) with zero mandatory dependencies (`dependencies = []`) and optional `msgpack` acceleration (`jetpack-sdk[msgpack]`).
 
 See [Frontend Quickstart](/sdk/frontend/quickstart) and [Python Worker SDK](/sdk/worker/python-sdk) for consumer usage.
@@ -1966,9 +1966,9 @@ make sdk-check
 
 `make sdk-check` runs `make sdk-build` and executes `scripts/sdk_check.sh`, verifying:
 
-1. **Version Parity**: `@jetpack/client` (`package.json`), `jetpack-sdk` (`pyproject.toml` PEP 440), and `EMBEDDED_JETPACK_SDK_VERSION` (`crates/jetpack-daemon/src/python.rs`) match.
+1. **Version Parity**: `@jetpack-desktop/client` (`package.json`), `jetpack-sdk` (`pyproject.toml` PEP 440), and `EMBEDDED_JETPACK_SDK_VERSION` (`crates/jetpack-daemon/src/python.rs`) match.
 2. **TypeScript SDK Unit Tests & Tarball Inspection**: Runs `npm --prefix web/packages/jetpack-client test`, packs the `.tgz`, and verifies `dist/`, `wasm/`, `README.md`, and `LICENSE` are present without leaking `src/`, `tests/`, or `node_modules/`.
-3. **Isolated Vite + TypeScript Consumer Smoke Check**: Installs the packed `.tgz` into a fresh temporary Vite + TypeScript project, verifies `tsc --noEmit` and `vite build` emit `jetpack_wasm_bg-*.wasm` into `dist/assets/`, and confirms `vite dev` serves `/node_modules/@jetpack/client/wasm/jetpack_wasm_bg.wasm` with `200 OK` and `application/wasm`.
+3. **Isolated Vite + TypeScript Consumer Smoke Check**: Installs the packed `.tgz` into a fresh temporary Vite + TypeScript project, verifies `tsc --noEmit` and `vite build` emit `jetpack_wasm_bg-*.wasm` into `dist/assets/`, and confirms `vite dev` serves `/node_modules/@jetpack-desktop/client/wasm/jetpack_wasm_bg.wasm` with `200 OK` and `application/wasm`.
 4. **Python Metadata & Isolated Venv Check**: Runs `twine check sdks/python/dist/*`, inspects `.whl` contents (including `jetpack_sdk/py.typed`), installs the wheel into a clean temporary `uv venv` without host site-packages, and passes `sdks/python/tests`.
 
 ## 3. Version Synchronization (`scripts/sync_version.sh`)
@@ -1996,12 +1996,12 @@ When publishing live from a clean git working tree:
 | Command | Target Registry | Notes |
 | :--- | :--- | :--- |
 | `make sdk-publish` | NPM + PyPI | Fails if git tree is dirty unless `ALLOW_DIRTY=1` is set |
-| `make sdk-publish-npm` | NPM only (`@jetpack/client`) | Runs `sdk-check` first |
+| `make sdk-publish-npm` | NPM only (`@jetpack-desktop/client`) | Runs `sdk-check` first |
 | `make sdk-publish-pypi` | PyPI only (`jetpack-sdk`) | Runs `sdk-check` first |
 
 ### Authentication Options
 
-* **NPM (`@jetpack/client`)**: Set `NPM_TOKEN` (or `NODE_AUTH_TOKEN`)—written to an ephemeral `0600` temporary config deleted on exit without modifying `~/.npmrc`—or log in beforehand via `npm login`.
+* **NPM (`@jetpack-desktop/client`)**: Set `NPM_TOKEN` (or `NODE_AUTH_TOKEN`)—written to an ephemeral `0600` temporary config deleted on exit without modifying `~/.npmrc`—or log in beforehand via `npm login`.
 * **PyPI (`jetpack-sdk`)**: Set `UV_PUBLISH_TOKEN` (or `PYPI_API_TOKEN` / `TWINE_PASSWORD`), or rely on `~/.pypirc` / an interactive prompt.
 
 ```bash
@@ -2015,6 +2015,8 @@ ALLOW_DIRTY=1 make sdk-publish-npm
 ## 5. GitHub Actions Release Integration
 
 `.github/workflows/release.yml` runs `sdk-check` on every tag (`v*`) or manual `workflow_dispatch` run, gating public desktop releases on SDK packaging verification. When `NPM_TOKEN` and/or `PYPI_API_TOKEN` repository secrets are configured, the `publish-sdks` job publishes both packages automatically after release artifacts succeed; if either secret is omitted, the step logs an informational notice and skips cleanly without failing binary or GitHub Pages releases.
+
+To republish or publish SDKs only without building macOS, Windows, or Linux desktop installers, trigger `Release JetPack` via `workflow_dispatch` with `publish_sdks_only: true` and an optional `release_tag` (e.g. `v0.1.2`). This skips `build-web`, desktop builds, and `release`, running only `sdk-check` and `publish-sdks`.
 
 See also [CLI Tools Reference](/publishing/cli-tools) and [Store Submission & Catalog Signing](/publishing/store-submission).
 
@@ -2233,7 +2235,7 @@ jobs:
 
       - name: Install JetPack CLI & Daemon
         run: |
-          cargo install --locked --git https://github.com/jetpack-io/jetpack.git jetpack-cli jetpack-daemon
+          cargo install --locked --git https://github.com/jetpack-desktop/jetpack.git jetpack-cli jetpack-daemon
 
       - name: Validate & Package OCI Layout
         id: pkg

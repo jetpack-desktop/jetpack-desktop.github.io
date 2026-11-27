@@ -22,7 +22,7 @@ Scaffolds a ready-to-run JetPack project in `<target_dir>` with AI instructions 
 # Python worker starter (default)
 jetpack init ./workers/my-ocr-worker --template python
 
-# Fullstack TypeScript (@jetpack/client) + Python worker starter
+# Fullstack TypeScript (@jetpack-desktop/client) + Python worker starter
 jetpack init ./apps/my-ai-app --app-id com.dev.my-ai-app --template fullstack
 ```
 

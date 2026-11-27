@@ -14,7 +14,7 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
 ```text
 +-----------------------------------------------------------------------------+
 | Tier 1: Browser / WASM Frontend                                             |
-|   @jetpack/client (TypeScript) -> jetpack-wasm (wasm32-unknown-unknown)     |
+|   @jetpack-desktop/client (TypeScript) -> jetpack-wasm (wasm32-unknown-unknown)     |
 |   - Persistent Ed25519 / X25519 identity in localStorage                    |
 |   - Out-of-Band pairing via jetpack://pair                                  |
 |   - Encrypted binary WebSocket client (ws://127.0.0.1:9470)                 |
@@ -47,9 +47,9 @@ JetPack separates untrusted browser code, security enforcement, and heavy native
 +-----------------------------------------------------------------------------+
 ```
 
-### Tier 1: WASM Frontend (`jetpack-wasm` & `@jetpack/client`)
+### Tier 1: WASM Frontend (`jetpack-wasm` & `@jetpack-desktop/client`)
 
-Web applications (including standalone MPA/SPA UIs hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
+Web applications (including standalone MPA/SPA UIs hosted under `/apps/<app-id>/` and third-party web frontends) interact with JetPack through the high-level `@jetpack-desktop/client` TypeScript package (`JetPackAppClient` and its auto-mounted Shadow-DOM `JetPackControlBar`) layered on top of `jetpack-wasm`. All protocol framing, `Ed25519` request signing, `X25519` key exchange, and `ChaCha20-Poly1305` encryption execute inside WebAssembly (`jetpack-proto` compiled for `wasm32-unknown-unknown`) before bytes touch the browser `WebSocket`.
 
 ### Tier 2: Rust Tray Gatekeeper (`jetpack-daemon`)
 
@@ -115,5 +115,5 @@ You can override the root directory hermetically for testing or portable install
 | `crates/jetpack-common` | `AppManifest` (`app.toml`) strict parser/validator, `DaemonConfig`, `JetPackPaths`, and shared errors |
 | `crates/jetpack-daemon` | Tray agent, `127.0.0.1:9470` WS/Control Center + standalone MPA server, ChaCha20-Poly1305 encrypted SQLite store (`rusqlite` `bundled`), pure-Rust TLS (`rustls-tls`), OCI/Python/runtime provisioners, OS sandboxes, and CLI tools |
 | `crates/jetpack-wasm` | `wasm-bindgen` browser SDK (`WasmClientIdentity`, `JetPackWasmClient`) |
-| `web/` | Embedded Control Center UI, standalone MPA web apps (`web/apps/*` -> `web/dist/`), and `@jetpack/client` TypeScript SDK (`web/packages/jetpack-client`) |
+| `web/` | Embedded Control Center UI, standalone MPA web apps (`web/apps/*` -> `web/dist/`), and `@jetpack-desktop/client` TypeScript SDK (`web/packages/jetpack-client`) |
 | `sdks/python/jetpack_sdk` | Lightweight Python worker IPC library (`JetPackClient`, `HybridFrame`, zero-copy reader) |

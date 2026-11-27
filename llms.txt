@@ -22,8 +22,8 @@ A lightweight Rust tray orchestrator (~5–10 MB) bridging WebAssembly frontends
 
 ### Frontend SDK
 
-- [Frontend Quickstart (`@jetpack/client`)](https://jetpack-desktop.github.io/sdk/frontend/quickstart.md): Connect, auto-pair, provision workers, and exchange zero-copy binary frames from browser TypeScript with @jetpack/client.
-- [Frontend API Reference](https://jetpack-desktop.github.io/sdk/frontend/api-reference.md): Complete TypeScript API reference for @jetpack/client (JetPackAppClient, JetPackOpcodeMap typed contracts, ControlBar, LogTerminal) and low-level jetpack-wasm bindings.
+- [Frontend Quickstart (`@jetpack-desktop/client`)](https://jetpack-desktop.github.io/sdk/frontend/quickstart.md): Connect, auto-pair, provision workers, and exchange zero-copy binary frames from browser TypeScript with @jetpack-desktop/client.
+- [Frontend API Reference](https://jetpack-desktop.github.io/sdk/frontend/api-reference.md): Complete TypeScript API reference for @jetpack-desktop/client (JetPackAppClient, JetPackOpcodeMap typed contracts, ControlBar, LogTerminal) and low-level jetpack-wasm bindings.
 - [Binary Framing Protocol](https://jetpack-desktop.github.io/sdk/frontend/binary-framing.md): Hybrid zero-copy binary framing protocol combining compact MsgPack headers with raw binary payloads and ChaCha20-Poly1305 AEAD.
 
 ### Worker SDK
@@ -36,7 +36,7 @@ A lightweight Rust tray orchestrator (~5–10 MB) bridging WebAssembly frontends
 
 - [Manifest Reference (`app.toml`)](https://jetpack-desktop.github.io/publishing/manifest-reference.md): Strict app.toml manifest schema reference covering package, hardware, runtimes, python_env, services, volumes, permissions, and execution.
 - [CLI Tools Reference](https://jetpack-desktop.github.io/publishing/cli-tools.md): Reference for the console jetpack developer CLI (init, mcp, codegen, validate, install-local, package) and jetpack-daemon runtime/signing flags.
-- [SDK Publishing (NPM & PyPI)](https://jetpack-desktop.github.io/publishing/sdk-publishing.md): Build, verify in isolated consumers, synchronize versions, and publish @jetpack/client (NPM) and jetpack-sdk (PyPI).
+- [SDK Publishing (NPM & PyPI)](https://jetpack-desktop.github.io/publishing/sdk-publishing.md): Build, verify in isolated consumers, synchronize versions, and publish @jetpack-desktop/client (NPM) and jetpack-sdk (PyPI).
 - [Store Submission & Catalog Signing](https://jetpack-desktop.github.io/publishing/store-submission.md): Package validated workers into multi-arch OCI Image Layout bundles, push to registries, and sign catalog.signed.json with Ed25519.
 - [GitHub Actions Publishing to GHCR](https://jetpack-desktop.github.io/publishing/ghcr-workflow.md): Automated GitHub Actions workflow template for validating, packaging, pushing JetPack apps to ghcr.io via ORAS, and verifying manifest_sha256.
 

@@ -2,29 +2,29 @@
 url: https://jetpack-desktop.github.io/sdk/frontend/quickstart.md
 description: >-
   Connect, auto-pair, provision workers, and exchange zero-copy binary frames
-  from browser TypeScript with @jetpack/client.
+  from browser TypeScript with @jetpack-desktop/client.
 ---
 
-# Frontend Quickstart (`@jetpack/client`)
+# Frontend Quickstart (`@jetpack-desktop/client`)
 
-The `@jetpack/client` TypeScript package (`web/packages/jetpack-client`) provides `JetPackAppClient`, a high-level wrapper over `jetpack-wasm` that automates cryptographic identity management, Out-of-Band `jetpack://pair` onboarding, catalog pulls, worker launch, correlated binary requests, and streaming event subscriptions.
+The `@jetpack-desktop/client` TypeScript package (`web/packages/jetpack-client`) provides `JetPackAppClient`, a high-level wrapper over `jetpack-wasm` that automates cryptographic identity management, Out-of-Band `jetpack://pair` onboarding, catalog pulls, worker launch, correlated binary requests, and streaming event subscriptions.
 
 ## Installation
 
-Install `@jetpack/client` from NPM in any Vite, TypeScript, or modern ESM web project:
+Install `@jetpack-desktop/client` from NPM in any Vite, TypeScript, or modern ESM web project:
 
 ```bash
-npm install @jetpack/client
+npm install @jetpack-desktop/client
 ```
 
-`@jetpack/client` **bundles the compiled `jetpack-wasm` WebAssembly binary and JS glue directly inside the package** (`@jetpack/client/wasm`). External applications work out-of-the-box with zero manual WASM copying or path overrides—both `vite dev` (dependency pre-bundling) and `vite build` resolve the bundled `.wasm` module automatically.
+`@jetpack-desktop/client` **bundles the compiled `jetpack-wasm` WebAssembly binary and JS glue directly inside the package** (`@jetpack-desktop/client/wasm`). External applications work out-of-the-box with zero manual WASM copying or path overrides—both `vite dev` (dependency pre-bundling) and `vite build` resolve the bundled `.wasm` module automatically.
 
-If you host the `.wasm` binary on a custom CDN path or supply pre-loaded bindings, you can still pass `wasmModule`, `wasmModulePath`, or `wasmBinaryOrUrl` to `connectAndEnsureApp()`. To access low-level bindings directly, import from the `@jetpack/client/wasm` subpath export.
+If you host the `.wasm` binary on a custom CDN path or supply pre-loaded bindings, you can still pass `wasmModule`, `wasmModulePath`, or `wasmBinaryOrUrl` to `connectAndEnsureApp()`. To access low-level bindings directly, import from the `@jetpack-desktop/client/wasm` subpath export.
 
 ## 1. Connect, Pair, Pull, and Launch in One Call
 
 ```typescript
-import { JetPackAppClient, JetPackClientError } from '@jetpack/client';
+import { JetPackAppClient, JetPackClientError } from '@jetpack-desktop/client';
 
 const client = new JetPackAppClient();
 

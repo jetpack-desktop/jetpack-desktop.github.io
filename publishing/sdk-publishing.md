@@ -2,14 +2,14 @@
 url: https://jetpack-desktop.github.io/publishing/sdk-publishing.md
 description: >-
   Build, verify in isolated consumers, synchronize versions, and publish
-  @jetpack/client (NPM) and jetpack-sdk (PyPI).
+  @jetpack-desktop/client (NPM) and jetpack-sdk (PyPI).
 ---
 
 # SDK Publishing (NPM & PyPI)
 
 Maintainers can build, verify in clean isolated environments, synchronize versions, and publish both official JetPack SDKs using repeatable user-space `Makefile` commands:
 
-* **Frontend SDK (`@jetpack/client`)** — `web/packages/jetpack-client`, bundling compiled `jetpack-wasm` (`crates/jetpack-wasm`) into `wasm/` and re-exporting it via `@jetpack/client/wasm` so external consumers require zero manual WASM path setup.
+* **Frontend SDK (`@jetpack-desktop/client`)** — `web/packages/jetpack-client`, bundling compiled `jetpack-wasm` (`crates/jetpack-wasm`) into `wasm/` and re-exporting it via `@jetpack-desktop/client/wasm` so external consumers require zero manual WASM path setup.
 * **Python Worker SDK (`jetpack-sdk`)** — `sdks/python`, built with `hatchling` (`sdist` + `py3-none-any` wheel) with zero mandatory dependencies (`dependencies = []`) and optional `msgpack` acceleration (`jetpack-sdk[msgpack]`).
 
 See [Frontend Quickstart](/sdk/frontend/quickstart) and [Python Worker SDK](/sdk/worker/python-sdk) for consumer usage.
@@ -34,9 +34,9 @@ make sdk-check
 
 `make sdk-check` runs `make sdk-build` and executes `scripts/sdk_check.sh`, verifying:
 
-1. **Version Parity**: `@jetpack/client` (`package.json`), `jetpack-sdk` (`pyproject.toml` PEP 440), and `EMBEDDED_JETPACK_SDK_VERSION` (`crates/jetpack-daemon/src/python.rs`) match.
+1. **Version Parity**: `@jetpack-desktop/client` (`package.json`), `jetpack-sdk` (`pyproject.toml` PEP 440), and `EMBEDDED_JETPACK_SDK_VERSION` (`crates/jetpack-daemon/src/python.rs`) match.
 2. **TypeScript SDK Unit Tests & Tarball Inspection**: Runs `npm --prefix web/packages/jetpack-client test`, packs the `.tgz`, and verifies `dist/`, `wasm/`, `README.md`, and `LICENSE` are present without leaking `src/`, `tests/`, or `node_modules/`.
-3. **Isolated Vite + TypeScript Consumer Smoke Check**: Installs the packed `.tgz` into a fresh temporary Vite + TypeScript project, verifies `tsc --noEmit` and `vite build` emit `jetpack_wasm_bg-*.wasm` into `dist/assets/`, and confirms `vite dev` serves `/node_modules/@jetpack/client/wasm/jetpack_wasm_bg.wasm` with `200 OK` and `application/wasm`.
+3. **Isolated Vite + TypeScript Consumer Smoke Check**: Installs the packed `.tgz` into a fresh temporary Vite + TypeScript project, verifies `tsc --noEmit` and `vite build` emit `jetpack_wasm_bg-*.wasm` into `dist/assets/`, and confirms `vite dev` serves `/node_modules/@jetpack-desktop/client/wasm/jetpack_wasm_bg.wasm` with `200 OK` and `application/wasm`.
 4. **Python Metadata & Isolated Venv Check**: Runs `twine check sdks/python/dist/*`, inspects `.whl` contents (including `jetpack_sdk/py.typed`), installs the wheel into a clean temporary `uv venv` without host site-packages, and passes `sdks/python/tests`.
 
 ## 3. Version Synchronization (`scripts/sync_version.sh`)
@@ -64,12 +64,12 @@ When publishing live from a clean git working tree:
 | Command | Target Registry | Notes |
 | :--- | :--- | :--- |
 | `make sdk-publish` | NPM + PyPI | Fails if git tree is dirty unless `ALLOW_DIRTY=1` is set |
-| `make sdk-publish-npm` | NPM only (`@jetpack/client`) | Runs `sdk-check` first |
+| `make sdk-publish-npm` | NPM only (`@jetpack-desktop/client`) | Runs `sdk-check` first |
 | `make sdk-publish-pypi` | PyPI only (`jetpack-sdk`) | Runs `sdk-check` first |
 
 ### Authentication Options
 
-* **NPM (`@jetpack/client`)**: Set `NPM_TOKEN` (or `NODE_AUTH_TOKEN`)—written to an ephemeral `0600` temporary config deleted on exit without modifying `~/.npmrc`—or log in beforehand via `npm login`.
+* **NPM (`@jetpack-desktop/client`)**: Set `NPM_TOKEN` (or `NODE_AUTH_TOKEN`)—written to an ephemeral `0600` temporary config deleted on exit without modifying `~/.npmrc`—or log in beforehand via `npm login`.
 * **PyPI (`jetpack-sdk`)**: Set `UV_PUBLISH_TOKEN` (or `PYPI_API_TOKEN` / `TWINE_PASSWORD`), or rely on `~/.pypirc` / an interactive prompt.
 
 ```bash
@@ -83,5 +83,7 @@ ALLOW_DIRTY=1 make sdk-publish-npm
 ## 5. GitHub Actions Release Integration
 
 `.github/workflows/release.yml` runs `sdk-check` on every tag (`v*`) or manual `workflow_dispatch` run, gating public desktop releases on SDK packaging verification. When `NPM_TOKEN` and/or `PYPI_API_TOKEN` repository secrets are configured, the `publish-sdks` job publishes both packages automatically after release artifacts succeed; if either secret is omitted, the step logs an informational notice and skips cleanly without failing binary or GitHub Pages releases.
+
+To republish or publish SDKs only without building macOS, Windows, or Linux desktop installers, trigger `Release JetPack` via `workflow_dispatch` with `publish_sdks_only: true` and an optional `release_tag` (e.g. `v0.1.2`). This skips `build-web`, desktop builds, and `release`, running only `sdk-check` and `publish-sdks`.
 
 See also [CLI Tools Reference](/publishing/cli-tools) and [Store Submission & Catalog Signing](/publishing/store-submission).

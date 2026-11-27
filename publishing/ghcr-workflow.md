@@ -80,7 +80,7 @@ jobs:
 
       - name: Install JetPack CLI & Daemon
         run: |
-          cargo install --locked --git https://github.com/jetpack-io/jetpack.git jetpack-cli jetpack-daemon
+          cargo install --locked --git https://github.com/jetpack-desktop/jetpack.git jetpack-cli jetpack-daemon
 
       - name: Validate & Package OCI Layout
         id: pkg

@@ -7,7 +7,7 @@ description: >-
 
 # AI Agents & MCP Integration
 
-JetPack includes a complete AI-Agent Developer Experience (DX) suite designed so coding agents (**Claude Code**, **Cursor**, **Windsurf**, **OpenClaw**, and custom MCP clients) can scaffold, type-check, validate, and debug `@jetpack/client` + Python Worker applications with zero hallucinations.
+JetPack includes a complete AI-Agent Developer Experience (DX) suite designed so coding agents (**Claude Code**, **Cursor**, **Windsurf**, **OpenClaw**, and custom MCP clients) can scaffold, type-check, validate, and debug `@jetpack-desktop/client` + Python Worker applications with zero hallucinations.
 
 ## 1. LLM-Friendly Documentation (`llms.txt` & `llms-full.txt`)
 
@@ -104,7 +104,7 @@ If `jetpack` is on your shell `PATH` (for example via `cargo install --path crat
 | `get_daemon_status` | *(none)* | Checks `jetpack-daemon` health, version, bound `127.0.0.1` WebSocket port, reachability, paired origins, and active sandboxed workers via token-authenticated `pairing.ipc`. |
 | `read_worker_logs` | `app_id: string`, `lines?: number` (`1..2000`, default `100`) | Tails live or offline `worker.log` / `daemon.log` crash tracebacks and stdout/stderr for `app_id`, automatically redacting sensitive keys, tokens, and user paths. |
 | `validate_manifest` | `path: string` | Validates `app.toml` (or a directory containing `app.toml`) against the strict `#[serde(deny_unknown_fields)]` schema, permissions, volumes, runtimes, and `python_env`. |
-| `scaffold_app` | `target_dir: string`, `app_id?: string`, `template?: "python" \| "fullstack"` (default `"fullstack"`) | Generates a starter JetPack app with `app.toml`, `worker.py`, optional `@jetpack/client` TypeScript frontend, `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/jetpack.mdc`, and `.agents/skills/`. |
+| `scaffold_app` | `target_dir: string`, `app_id?: string`, `template?: "python" \| "fullstack"` (default `"fullstack"`) | Generates a starter JetPack app with `app.toml`, `worker.py`, optional `@jetpack-desktop/client` TypeScript frontend, `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/jetpack.mdc`, and `.agents/skills/`. |
 
 ## 3. Project Scaffolding Rules & Agent Skills (`jetpack init`)
 
@@ -114,7 +114,7 @@ Running `jetpack init` (or `jetpack-daemon --init-app`, or the `scaffold_app` MC
 # Python worker starter + AI rules & skills
 jetpack init ./workers/my-ocr-worker --template python
 
-# Fullstack TypeScript (@jetpack/client) + Python worker starter
+# Fullstack TypeScript (@jetpack-desktop/client) + Python worker starter
 jetpack init ./apps/my-ai-app --app-id com.dev.my-ai-app --template fullstack
 ```
 
@@ -125,7 +125,7 @@ jetpack init ./apps/my-ai-app --app-id com.dev.my-ai-app --template fullstack
 * **`.cursor/rules/jetpack.mdc`** — Cursor MDC rule file auto-attaching JetPack architecture constraints.
 * **`.agents/skills/`** — Step-by-step reusable Agent Skills:
   * `.agents/skills/create-jetpack-worker/SKILL.md` — Scaffolding, manifest setup, `jetpack validate`, and local installation.
-  * `.agents/skills/add-binary-opcode/SKILL.md` — Adding a Pydantic/typed Python worker handler, regenerating `jetpack-env.d.ts`, and calling it from `@jetpack/client`.
+  * `.agents/skills/add-binary-opcode/SKILL.md` — Adding a Pydantic/typed Python worker handler, regenerating `jetpack-env.d.ts`, and calling it from `@jetpack-desktop/client`.
   * `.agents/skills/debug-pairing/SKILL.md` — Diagnosing `127.0.0.1:9470` WebSocket pairing, `jetpack://pair` OOB approval, and worker launch errors via MCP.
 
 All AI instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.agents/`) and generated `jetpack-env.d.ts` declarations are automatically excluded when packaging OCI bundles via `jetpack package` or `jetpack-daemon --package-app`.
@@ -163,7 +163,7 @@ jetpack codegen --worker worker.py --out src/jetpack-env.d.ts --strict
 Then pass `JetPackOpcodeMap` as the generic parameter to `JetPackAppClient`:
 
 ```typescript
-import { JetPackAppClient } from '@jetpack/client';
+import { JetPackAppClient } from '@jetpack-desktop/client';
 import type { JetPackOpcodeMap } from './jetpack-env';
 
 const client = new JetPackAppClient<JetPackOpcodeMap>();
