@@ -9,6 +9,18 @@ description: >-
 
 The `@jetpack/client` TypeScript package (`web/packages/jetpack-client`) provides `JetPackAppClient`, a high-level wrapper over `jetpack-wasm` that automates cryptographic identity management, Out-of-Band `jetpack://pair` onboarding, catalog pulls, worker launch, correlated binary requests, and streaming event subscriptions.
 
+## Installation
+
+Install `@jetpack/client` from NPM in any Vite, TypeScript, or modern ESM web project:
+
+```bash
+npm install @jetpack/client
+```
+
+`@jetpack/client` **bundles the compiled `jetpack-wasm` WebAssembly binary and JS glue directly inside the package** (`@jetpack/client/wasm`). External applications work out-of-the-box with zero manual WASM copying or path overrides—both `vite dev` (dependency pre-bundling) and `vite build` resolve the bundled `.wasm` module automatically.
+
+If you host the `.wasm` binary on a custom CDN path or supply pre-loaded bindings, you can still pass `wasmModule`, `wasmModulePath`, or `wasmBinaryOrUrl` to `connectAndEnsureApp()`. To access low-level bindings directly, import from the `@jetpack/client/wasm` subpath export.
+
 ## 1. Connect, Pair, Pull, and Launch in One Call
 
 ```typescript
@@ -88,7 +100,7 @@ const jsonSummary = JSON.parse(new TextDecoder().decode(response.payload));
 console.log('Probe result:', jsonSummary);
 ```
 
-Under the hood, `request()` assigns a monotonic `correlation_id`, encrypts the `HybridFrame` with `ChaCha20-Poly1305`, and resolves once the worker replies with the matching `correlation_id` (or rejects on `app.error` / `system.error` / `REQUEST_TIMEOUT`).
+Under the hood, `request()` assigns a monotonic `correlation_id`, encrypts the `HybridFrame` with `ChaCha20-Poly1305`, and resolves once the worker replies with the matching `correlation_id` (or rejects on `app.error` / `system.error` / `REQUEST_TIMEOUT`). Launched workers stay running until explicitly stopped by the user or daemon/session teardown; if the worker is stopped externally (for example from Control Center or the system tray) or exits (`"app.worker.stopped"`), `JetPackControlBar` switches to `'Stopped'` with a `"Relaunch"` button and `request()` transparently wakes the worker via `ensureWorkerRunning()` on your next action.
 
 ## 3. Subscribe to Streaming Events (`onStream`) & Clean Up (`close` / `destroy`)
 

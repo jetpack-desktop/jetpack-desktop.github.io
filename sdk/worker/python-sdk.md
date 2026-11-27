@@ -7,7 +7,25 @@ description: >-
 
 # Python Worker SDK (`jetpack_sdk`) & GPU Wheels
 
-JetPack provides a lightweight, zero-dependency-capable Python SDK (`sdks/python/jetpack_sdk`) for building sandboxed AI, tensor, and media workers, paired with a hermetic `uv` + `python-build-standalone` provisioner inside `jetpack-daemon`.
+JetPack provides a lightweight, zero-dependency Python SDK (`sdks/python/jetpack_sdk`, published as `jetpack-sdk` on PyPI) for building sandboxed AI, tensor, and media workers, paired with a hermetic `uv` + `python-build-standalone` provisioner inside `jetpack-daemon`.
+
+## Installation
+
+Install `jetpack-sdk` from PyPI for local worker development, testing, or `uv` lockfile generation:
+
+```bash
+# Using uv (recommended)
+uv add jetpack-sdk
+
+# Or using pip (zero mandatory runtime dependencies)
+pip install jetpack-sdk
+
+# Optional C-extension MsgPack acceleration
+pip install "jetpack-sdk[msgpack]"
+```
+
+* **Zero Mandatory Dependencies**: `jetpack-sdk` works out-of-the-box with zero third-party packages using its built-in pure-Python MsgPack codec (`sdks/python/jetpack_sdk/framing.py`). Installing the optional `msgpack` extra accelerates large header encoding/decoding when desired.
+* **Offline Daemon Embedding**: When `jetpack-daemon` provisions `[python_env]` inside an end-user sandbox (`crates/jetpack-daemon/src/python.rs`), it automatically materializes the embedded `jetpack-sdk` wheel/module into `<app_dir>/.venv` offline without requiring PyPI network access.
 
 ## 1. Connecting via `JetPackClient`
 

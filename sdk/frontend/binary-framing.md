@@ -78,9 +78,11 @@ Where `frame_len = 4 + N + M`. This allows Python workers (`memoryview`) and Rus
 | `hardware.get_profile` | `hardware.profile` | Empty -> `HardwareProfile` (MsgPack) |
 | `catalog.get` | `catalog.ok` | Empty -> `CatalogAppEntry[]` (MsgPack) |
 | `app.list` | `app.list.ok` | Empty -> `AppInfo[]` (MsgPack) |
-| `app.pull` | `app.pull.progress`, `app.pull.ok`, `app.error` | `AppPullRequest` -> Progress / OK |
+| `app.pull` | `app.pull.progress`, `app.pull.ok`, `app.error` | `AppPullRequest` -> Progress / OK (updating an existing app rejects `APP_IS_RUNNING` if active, swaps in the new version, cleans superseded version folders under `<apps_dir>/<app_id>/`, and preserves `<appdata_root>/<app_id>` and mounted host folders) |
 | `app.launch` | `app.launch.progress`, `app.launch.ok`, `app.error` | `AppLaunchRequest` -> `AppLaunchProgressFrame` (`stage`, `message`, `percent?`, `downloaded_bytes`, `total_bytes`) / `job_id` |
 | `app.volumes.reset` | `app.volumes.reset.ok`, `app.error` | `AppVolumesResetRequest` -> `reset_count` |
+| `app.cache.clear` | `app.cache.clear.ok`, `app.error` | `AppClearCacheRequest` (`app_id`) -> `AppClearCacheOkResponse` (`app_id`, `cleared_appdata`, `reset_volumes`; Control Center origin only; rejects `APP_IS_RUNNING`) |
+| `app.uninstall` | `app.uninstall.ok`, `app.error` | `AppUninstallRequest` (`app_id`, `remove_cache`) -> `AppUninstallOkResponse` (`app_id`, `removed_app_dirs`, `cleared_appdata`, `reset_volumes`; Control Center origin only; rejects `APP_IS_RUNNING`) |
 | `app.terminate` | `app.terminate.ok`, `app.error` | `AppTerminateRequest` -> OK |
 | `client.list` / `client.revoke` | `client.list.ok` / `client.revoke.ok` | Client management |
 | `settings.get` / `settings.set` | `settings.get.ok` / `settings.ok` | `DaemonSettings` (`developer_mode`, `open_in_app_window`, `open_dashboard_on_startup`, `daemon_version`, `appdata_dir`); `settings.set` accepts optional `reset_appdata_dir: bool` (loopback only) |

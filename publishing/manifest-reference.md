@@ -176,5 +176,5 @@ JETPACK_LOG_LEVEL = "info"
 | `env` | `map<string, string>` | No | Sanitized env vars. Rejects `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `DYLD_FRAMEWORK_PATH`, `PYTHONINSPECT`, `PYTHONPATH`. |
 | `working_dir` | `string` | No | Optional relative working directory. |
 | `ipc_transport` | `string` | No | `"auto"` (default), `"unix_socket"`, or `"named_pipe"`. |
-| `timeout_secs` | `u64` | No | Optional idle/execution timeout in seconds. |
+| `timeout_secs` | `u64` | No | Optional positive hint (must be `> 0` if set); workers stay running until explicitly stopped or session/daemon shutdown. |
 | `graceful_shutdown_secs` | `u64` | No | Grace period before `SIGKILL`/`TerminateProcess` (default `10`, must be `> 0`). |

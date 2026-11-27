@@ -633,7 +633,7 @@ model_cache = false
 
 * **No absolute host paths**: Manifest validation rejects any path containing `..`, leading `/`, Windows drive prefixes, or `~` in `filesystem_scopes`.
 * **No dynamic linker hijacking**: `[execution].env` and `[services.<name>].env` reject `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `DYLD_FRAMEWORK_PATH`, `PYTHONINSPECT`, and `PYTHONPATH`.
-* **Guaranteed VRAM/RAM reclamation**: When a WebSocket session disconnects, `jetpack-daemon` shuts down, or a worker exceeds `execution.timeout_secs`, `WorkerLifecycleManager` sends a termination signal and forcefully reaps the entire process tree after `graceful_shutdown_secs` (`10s` default), releasing GPU VRAM immediately.
+* **Guaranteed VRAM/RAM reclamation**: When a user explicitly stops a worker, a WebSocket session disconnects, or `jetpack-daemon` shuts down, `WorkerLifecycleManager` sends a termination signal and forcefully reaps the entire process tree after `graceful_shutdown_secs` (`10s` default), releasing GPU VRAM immediately. Workers remain active until explicitly stopped by the user or session/daemon teardown.
 
 ## Local IPC & Userspace Network Proxy
 
@@ -650,7 +650,7 @@ Because sandboxed workers have **no direct access to host network interfaces**, 
 
 1. **Allowlist & Preset Matching**: Every outbound `CONNECT`, plain HTTP, or SOCKS5 request checks the destination `host:port` against `permissions.network_allowlist` in `app.toml` (supports exact matches like `api.openai.com:443`, multi-label wildcard subdomains like `*.huggingface.co:443` / `*.xethub.hf.co:443`, bracketed IPv6 literals, and the `"preset:huggingface"` shorthand).
 2. **Forbidden Rules**: Global wildcards (`*`, `*:*`, `0.0.0.0:*`), unknown `preset:*` tokens, and loopback daemon ports (`127.0.0.1:9470`) are rejected at manifest validation time (`crates/jetpack-common/src/manifest.rs`) or proxy evaluation time.
-3. **Zero-Buffering Multi-GB Streaming**: Upstream `TcpStream::connect` uses a `30s` connect timeout while bidirectional tunnels stream with bounded `64 KiB` directional buffers (`copy_bidirectional_with_sizes`) and no overall transfer timeout, updating worker idle-activity heartbeats (`last_activity_secs`) so large AI model downloads complete without idle termination. Request headers up to `64 KiB` are supported (`431 Request Header Fields Too Large` on overflow), and plain HTTP requests enforce `Connection: close` across hops.
+3. **Zero-Buffering Multi-GB Streaming**: Upstream `TcpStream::connect` uses a `30s` connect timeout while bidirectional tunnels stream with bounded `64 KiB` directional buffers (`copy_bidirectional_with_sizes`) and no overall transfer timeout so large AI model downloads complete uninterrupted. Request headers up to `64 KiB` are supported (`431 Request Header Fields Too Large` on overflow), and plain HTTP requests enforce `Connection: close` across hops.
 4. **Blocking & Audit Logging**: Requests to unlisted domains are rejected immediately with `403 Forbidden` (including `X-Jetpack-Blocked-Target: <host>:<port>`) before opening any upstream TCP socket, and an actionable `WARN` event with exact `app.toml` allowlist suggestions is written to `daemon.log` and streamed to the Developer Mode terminal. Raw `connect()` syscalls bypassing the proxy fail at the kernel level (`ENETUNREACH`, `EPERM`, or `WSAEACCES`).
 
 ---
@@ -725,6 +725,18 @@ description: >-
 # Frontend Quickstart (`@jetpack/client`)
 
 The `@jetpack/client` TypeScript package (`web/packages/jetpack-client`) provides `JetPackAppClient`, a high-level wrapper over `jetpack-wasm` that automates cryptographic identity management, Out-of-Band `jetpack://pair` onboarding, catalog pulls, worker launch, correlated binary requests, and streaming event subscriptions.
+
+## Installation
+
+Install `@jetpack/client` from NPM in any Vite, TypeScript, or modern ESM web project:
+
+```bash
+npm install @jetpack/client
+```
+
+`@jetpack/client` **bundles the compiled `jetpack-wasm` WebAssembly binary and JS glue directly inside the package** (`@jetpack/client/wasm`). External applications work out-of-the-box with zero manual WASM copying or path overrides—both `vite dev` (dependency pre-bundling) and `vite build` resolve the bundled `.wasm` module automatically.
+
+If you host the `.wasm` binary on a custom CDN path or supply pre-loaded bindings, you can still pass `wasmModule`, `wasmModulePath`, or `wasmBinaryOrUrl` to `connectAndEnsureApp()`. To access low-level bindings directly, import from the `@jetpack/client/wasm` subpath export.
 
 ## 1. Connect, Pair, Pull, and Launch in One Call
 
@@ -805,7 +817,7 @@ const jsonSummary = JSON.parse(new TextDecoder().decode(response.payload));
 console.log('Probe result:', jsonSummary);
 ```
 
-Under the hood, `request()` assigns a monotonic `correlation_id`, encrypts the `HybridFrame` with `ChaCha20-Poly1305`, and resolves once the worker replies with the matching `correlation_id` (or rejects on `app.error` / `system.error` / `REQUEST_TIMEOUT`).
+Under the hood, `request()` assigns a monotonic `correlation_id`, encrypts the `HybridFrame` with `ChaCha20-Poly1305`, and resolves once the worker replies with the matching `correlation_id` (or rejects on `app.error` / `system.error` / `REQUEST_TIMEOUT`). Launched workers stay running until explicitly stopped by the user or daemon/session teardown; if the worker is stopped externally (for example from Control Center or the system tray) or exits (`"app.worker.stopped"`), `JetPackControlBar` switches to `'Stopped'` with a `"Relaunch"` button and `request()` transparently wakes the worker via `ensureWorkerRunning()` on your next action.
 
 ## 3. Subscribe to Streaming Events (`onStream`) & Clean Up (`close` / `destroy`)
 
@@ -872,11 +884,15 @@ description: >-
 
 # Frontend API Reference
 
-This page documents both the high-level TypeScript SDK (`@jetpack/client`) and the underlying `wasm-bindgen` bindings (`jetpack-wasm`).
+This page documents both the high-level TypeScript SDK (`@jetpack/client`) and the bundled `wasm-bindgen` bindings (`jetpack-wasm`, re-exported via `@jetpack/client/wasm`).
+
+```bash
+npm install @jetpack/client
+```
 
 ## High-Level SDK: `JetPackAppClient<TOpcodes>` (`@jetpack/client`)
 
-Source: `web/packages/jetpack-client/src/client.ts` and `types.ts`.
+Source: `web/packages/jetpack-client/src/client.ts` and `types.ts`. By default, `JetPackAppClient` loads the bundled `@jetpack/client/wasm` module with zero configuration (`wasmModule`, `wasmModulePath`, and `wasmBinaryOrUrl` remain available as optional overrides).
 
 Pass a `JetPackOpcodeMap` interface generated by [`jetpack codegen`](/publishing/cli-tools#jetpack-codegen---worker-path---out-path---strict) (`new JetPackAppClient<JetPackOpcodeMap>()`) for compile-time validation of opcodes, metadata shapes, required `Uint8Array` payloads, response types, and `onStream()` listeners. Omitting the generic (`new JetPackAppClient()`) falls back to `DefaultOpcodeMap` and stays 100% backwards-compatible.
 
@@ -885,19 +901,24 @@ Pass a `JetPackOpcodeMap` interface generated by [`jetpack codegen`](/publishing
 | Method | Signature | Description |
 | :--- | :--- | :--- |
 | `connectAndEnsureApp` | `(options: ConnectAndEnsureAppOptions) => Promise<this>` | Initializes WASM, connects & pairs if needed, pulls from `SignedAppCatalog` if absent, launches or attaches to the worker, mounts `JetPackControlBar`, and mounts/subscribes `JetPackLogTerminal` when `developer_mode === true`. |
+| `ensureWorkerRunning` | `() => Promise<void>` | Ensures the sandboxed worker is running, relaunching it via `launch_app` if it was stopped externally (for example via Control Center or manual Stop). Concurrent callers share a single launch operation. |
 | `stopApp` | `() => Promise<unknown>` | Terminates the active worker via `terminate_app(appId)`, rejects in-flight requests with `NOT_CONNECTED`, and sets `JetPackControlBar` status to `'Stopped'`. |
-| `request` | `<K extends keyof TOpcodes & string>(opcode: K, ...args: OpcodeRequestArgs<TOpcodes, K>) => Promise<WorkerResponse<OpcodeResponseFor<TOpcodes, K>>>` | Sends a correlated `HybridFrame` (`target_worker = appId`) with zero-copy `Uint8Array` transfer and resolves with `{ opcode, payload, correlationId }`. Enforces `meta` and required `binaryPayload` at compile time when typed. |
+| `request` | `<K extends keyof TOpcodes & string>(opcode: K, ...args: OpcodeRequestArgs<TOpcodes, K>) => Promise<WorkerResponse<OpcodeResponseFor<TOpcodes, K>>>` | Sends a correlated `HybridFrame` (`target_worker = appId`) with zero-copy `Uint8Array` transfer and resolves with `{ opcode, payload, correlationId }`. Automatically wakes a stopped worker via `ensureWorkerRunning()` (and retries once on a no-active-worker `system.error` race) while respecting `timeoutMs`. |
 | `onStream` | `<K extends (keyof TOpcodes & string) \| '*'>(opcode: K, callback: StreamCallback<K extends '*' ? string : K, OpcodeStreamPayloadFor<TOpcodes, K>>) => () => void` | Subscribes to unsolicited or streaming worker frames matching `opcode` (or `'*'`). Returns an idempotent unsubscribe function. |
+| `onWorkerStopped` | `(callback: (event: AppWorkerStoppedEvent) => void) => () => void` | Subscribes to daemon `"app.worker.stopped"` events (`'idle_timeout'`, `'terminated'`, `'process_exited'`). Returns an idempotent unsubscribe function. |
+| `onWorkerStarted` | `(callback: (event: { app_id: string }) => void) => () => void` | Subscribes to worker wake/relaunch events emitted after `ensureWorkerRunning()` succeeds. Returns an idempotent unsubscribe function. |
 | `subscribeLogs` | `(onEntry: (entry: LogEntry) => void) => Promise<LogsSubscribeOkResponse>` | Subscribes to live sanitized daemon & worker `logs.entry` frames (`logs.subscribe`). Rejects with `DEV_MODE_REQUIRED` when Developer Mode is off. |
 | `unsubscribeLogs` | `() => Promise<void>` | Unsubscribes from live log streaming (`logs.unsubscribe`). Safe to call repeatedly. |
 | `isConnected` | `() => boolean` | Returns `true` when an authenticated session is active and bound to an ensured `appId`. |
+| `isWorkerRunning` | `() => boolean` | Returns `true` when the session is connected and the app worker is currently active. |
+| `getLastStopReason` | `() => WorkerStopReason \| null` | Returns the most recent `WorkerStopReason` (`'idle_timeout'`, `'terminated'`, `'process_exited'`) if stopped, or `null` while running. |
 | `getAppId` | `() => string \| null` | Returns the currently ensured `appId`, or `null` if disconnected. |
 | `getIdentity` | `() => WasmIdentityLike \| null` | Returns the active `WasmClientIdentity`, if initialized. |
 | `getLastPairingUri` | `() => string \| null` | Returns the last generated `jetpack://pair?...` URI if auto-pairing ran. |
 | `getRawClient` | `() => WasmClientLike \| null` | Exposes the underlying `JetPackWasmClient` for control-plane calls (`get_hardware_profile`, `reset_app_volumes`, etc.). |
 | `getControlBar` | `() => JetPackControlBar \| null` | Returns the auto-mounted `JetPackControlBar` instance, or `null` when disabled (`controlBar: false`) or running headless. |
 | `getLogTerminal` | `() => JetPackLogTerminal \| null` | Returns the auto-mounted Developer Mode `JetPackLogTerminal` instance, or `null` when Developer Mode is off, disabled (`logTerminal: false`), or running headless. |
-| `close` | `() => void` | Closes the WebSocket, unsubscribes live log streams, clears stream listeners, rejects pending `request()` calls with `CLIENT_CLOSED`, hides `JetPackLogTerminal`, and marks `JetPackControlBar` as `'Stopped'`. |
+| `close` | `() => void` | Closes the WebSocket, unsubscribes live log streams, clears stream/lifecycle listeners, rejects pending `request()` calls with `CLIENT_CLOSED`, hides `JetPackLogTerminal`, and marks `JetPackControlBar` as `'Stopped'`. |
 | `destroy` | `() => void` | Calls `close()` and unmounts any auto-mounted `JetPackControlBar` and `JetPackLogTerminal`. |
 
 ### `ConnectAndEnsureAppOptions`
@@ -933,6 +954,13 @@ Source: `web/packages/jetpack-client/src/control-bar.ts`. Uses `attachShadow({ m
 
 ```typescript
 export type ControlBarWorkerStatus = 'Connecting' | 'Running' | 'Stopped' | 'Error';
+export type WorkerStopReason = 'idle_timeout' | 'terminated' | 'process_exited';
+
+export interface AppWorkerStoppedEvent {
+  app_id: string;
+  job_id: string;
+  reason: WorkerStopReason;
+}
 
 export interface JetPackControlBarOptions {
   appId?: string;
@@ -947,6 +975,7 @@ export interface JetPackControlBarOptions {
   stopConfirmTitle?: string;
   stopConfirmMessage?: string;
   onStop?: () => Promise<unknown>;     // Wired automatically to client.stopApp()
+  onRelaunch?: () => Promise<unknown>; // Wired automatically to client.ensureWorkerRunning()
   onAfterStop?: () => Promise<void> | void;
   onStopError?: (error: Error) => void;
 }
@@ -957,9 +986,10 @@ export interface JetPackControlBarOptions {
 | `mount` | `(target?: HTMLElement \| null) => boolean` | Inserts `#jetpack-control-bar-host` at the top of `target` (or `document.body`). Returns `false` if headless. |
 | `unmount` | `() => void` | Removes the host element and clears modal/keyboard listeners. |
 | `updateOptions` | `(partial: Partial<JetPackControlBarOptions>) => void` | Updates bar options live and refreshes rendered text/links. |
-| `setStatus` | `(status: ControlBarWorkerStatus, detail?: string, options?: { downloadUrl?: string }) => void` | Updates the live status pill, optional error detail tooltip, and renders a sanitized `https://` `"Download JetPack"` link when in `'Error'` state (non-HTTPS URLs are ignored). |
+| `setStatus` | `(status: ControlBarWorkerStatus, detail?: string, options?: { downloadUrl?: string }) => void` | Updates the live status pill, optional `'Stopped'` status note or `'Error'` detail tooltip, and renders a sanitized `https://` `"Download JetPack"` link when in `'Error'` state (non-HTTPS URLs are ignored). |
 | `getStatus` | `() => ControlBarWorkerStatus` | Returns the current status (`'Connecting'`, `'Running'`, `'Stopped'`, or `'Error'`). |
 | `setAppName` / `setControlCenterUrl` | `(value: string) => void` | Updates the displayed app name or `"Control Center"` destination URL. |
+| `triggerRelaunch` | `() => Promise<boolean>` | Invokes `onRelaunch()` when `status === 'Stopped'` and transitions the bar back to `'Running'` on success. |
 | `triggerStop` | `() => Promise<boolean>` | Opens the Shadow-DOM confirmation modal when `warnOnUnsavedWork` evaluates to `true` or `onBeforeStop` is set (unless `warnOnUnsavedWork === false`); otherwise stops directly. |
 | `confirmStopModal` / `cancelStopModal` | `() => Promise<boolean>` / `() => void` | Confirms (running `onBeforeStop` -> `onStop` -> `onAfterStop`) or dismisses the modal. |
 | `isModalOpen` | `() => boolean` | Returns `true` when the stop confirmation modal is currently visible. |
@@ -1066,9 +1096,15 @@ export type StreamCallback<TOpcode extends string = string, TPayload = unknown> 
 
 ***
 
-## Low-Level WASM Bindings (`jetpack-wasm`)
+## Low-Level WASM Bindings (`@jetpack/client/wasm` / `jetpack-wasm`)
 
-Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
+Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs` (bundled inside `@jetpack/client` under `@jetpack/client/wasm`).
+
+```typescript
+import initWasm, { WasmClientIdentity, JetPackWasmClient } from '@jetpack/client/wasm';
+
+await initWasm();
+```
 
 ### `WasmClientIdentity`
 
@@ -1092,6 +1128,8 @@ Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
 | `pull_app(imageRef, onProgress?, appId?)` | `Promise<AppPullOkResponse>` | Pulls a catalog-verified OCI app and streams `app.pull.progress` events (`percent` may be `number \| null`). |
 | `launch_app(appId, resetVolumes?, onProgress?)` | `Promise<AppLaunchOkResponse>` | Starts sandboxed worker (`resetVolumes` forces fresh `rfd` folder prompts). Optional `onProgress` receives `app.launch.progress` events (`runtime_download`, `runtime_extract`, `uv_bootstrap`, `python_standalone`, `uv_sync`, `sandbox_launch`) while remaining compatible with 1- and 2-argument calls. |
 | `reset_app_volumes(appId, volumeName?)` | `Promise<AppVolumesResetOkResponse>` | Clears persisted `authorized_volumes` entries in `paired_clients.db`. |
+| `clear_app_cache(appId)` | `Promise<AppClearCacheOkResponse>` | Loopback Control-Center-only (`127.0.0.1` / `localhost`, rejecting non-Control-Center origins with `APP_MANAGEMENT_ORIGIN_FORBIDDEN` and active workers with `APP_IS_RUNNING`). Removes `<appdata_root>/<app_id>`, recreates an empty `0o700` directory on Unix, and clears `authorized_volumes` rows without touching mounted host folders or application bundles. |
+| `uninstall_app(appId, removeCache?)` | `Promise<AppUninstallOkResponse>` | Loopback Control-Center-only (`APP_MANAGEMENT_ORIGIN_FORBIDDEN` / `APP_IS_RUNNING`). Removes all installed bundle directories for `appId` under `<apps_dir>`, and when `removeCache` is `true`, also removes `<appdata_root>/<app_id>` and clears `authorized_volumes` rows. Never deletes mounted host folders, `.core-apps-seeded`, shared blobs, or shared runtimes. |
 | `terminate_app(appIdOrJobId)` | `Promise<AppTerminateOkResponse>` | Terminates a running job and its OS sandbox. |
 | `list_paired_clients()` | `Promise<PairedClientSummary[]>` | Lists paired browser clients from `paired_clients.db`. |
 | `revoke_client(clientId?, origin?)` | `Promise<ClientRevokeOkResponse>` | Revokes paired client access. |
@@ -1107,7 +1145,8 @@ Source: `crates/jetpack-wasm/src/identity.rs` and `client.rs`.
 | `send_worker_frame(targetWorker, opcode, metaJs, rawPayload)` | `void` | Fire-and-forget encrypted `HybridFrame` dispatch to a worker. |
 | `request_worker_frame(targetWorker, opcode, metaJs, rawPayload)` | `Promise<WorkerResponse>` | Correlated worker request matching `correlation_id`. |
 | `on_worker_frame(callback)` | `void` | Registers `(opcode, payloadUint8Array, correlationId)` listener for unsolicited/stream frames. |
-| `close()` | `void` | Closes WebSocket, clears log listener, and fails pending promises. |
+| `on_worker_stopped(callback)` | `void` | Registers `(event)` listener invoked when the daemon pushes `"app.worker.stopped"` (`{ app_id, job_id, reason }`). |
+| `close()` | `void` | Closes WebSocket, clears log/worker listeners, and fails pending promises. |
 
 ---
 
@@ -1191,9 +1230,11 @@ Where `frame_len = 4 + N + M`. This allows Python workers (`memoryview`) and Rus
 | `hardware.get_profile` | `hardware.profile` | Empty -> `HardwareProfile` (MsgPack) |
 | `catalog.get` | `catalog.ok` | Empty -> `CatalogAppEntry[]` (MsgPack) |
 | `app.list` | `app.list.ok` | Empty -> `AppInfo[]` (MsgPack) |
-| `app.pull` | `app.pull.progress`, `app.pull.ok`, `app.error` | `AppPullRequest` -> Progress / OK |
+| `app.pull` | `app.pull.progress`, `app.pull.ok`, `app.error` | `AppPullRequest` -> Progress / OK (updating an existing app rejects `APP_IS_RUNNING` if active, swaps in the new version, cleans superseded version folders under `<apps_dir>/<app_id>/`, and preserves `<appdata_root>/<app_id>` and mounted host folders) |
 | `app.launch` | `app.launch.progress`, `app.launch.ok`, `app.error` | `AppLaunchRequest` -> `AppLaunchProgressFrame` (`stage`, `message`, `percent?`, `downloaded_bytes`, `total_bytes`) / `job_id` |
 | `app.volumes.reset` | `app.volumes.reset.ok`, `app.error` | `AppVolumesResetRequest` -> `reset_count` |
+| `app.cache.clear` | `app.cache.clear.ok`, `app.error` | `AppClearCacheRequest` (`app_id`) -> `AppClearCacheOkResponse` (`app_id`, `cleared_appdata`, `reset_volumes`; Control Center origin only; rejects `APP_IS_RUNNING`) |
+| `app.uninstall` | `app.uninstall.ok`, `app.error` | `AppUninstallRequest` (`app_id`, `remove_cache`) -> `AppUninstallOkResponse` (`app_id`, `removed_app_dirs`, `cleared_appdata`, `reset_volumes`; Control Center origin only; rejects `APP_IS_RUNNING`) |
 | `app.terminate` | `app.terminate.ok`, `app.error` | `AppTerminateRequest` -> OK |
 | `client.list` / `client.revoke` | `client.list.ok` / `client.revoke.ok` | Client management |
 | `settings.get` / `settings.set` | `settings.get.ok` / `settings.ok` | `DaemonSettings` (`developer_mode`, `open_in_app_window`, `open_dashboard_on_startup`, `daemon_version`, `appdata_dir`); `settings.set` accepts optional `reset_appdata_dir: bool` (loopback only) |
@@ -1216,7 +1257,25 @@ description: >-
 
 # Python Worker SDK (`jetpack_sdk`) & GPU Wheels
 
-JetPack provides a lightweight, zero-dependency-capable Python SDK (`sdks/python/jetpack_sdk`) for building sandboxed AI, tensor, and media workers, paired with a hermetic `uv` + `python-build-standalone` provisioner inside `jetpack-daemon`.
+JetPack provides a lightweight, zero-dependency Python SDK (`sdks/python/jetpack_sdk`, published as `jetpack-sdk` on PyPI) for building sandboxed AI, tensor, and media workers, paired with a hermetic `uv` + `python-build-standalone` provisioner inside `jetpack-daemon`.
+
+## Installation
+
+Install `jetpack-sdk` from PyPI for local worker development, testing, or `uv` lockfile generation:
+
+```bash
+# Using uv (recommended)
+uv add jetpack-sdk
+
+# Or using pip (zero mandatory runtime dependencies)
+pip install jetpack-sdk
+
+# Optional C-extension MsgPack acceleration
+pip install "jetpack-sdk[msgpack]"
+```
+
+* **Zero Mandatory Dependencies**: `jetpack-sdk` works out-of-the-box with zero third-party packages using its built-in pure-Python MsgPack codec (`sdks/python/jetpack_sdk/framing.py`). Installing the optional `msgpack` extra accelerates large header encoding/decoding when desired.
+* **Offline Daemon Embedding**: When `jetpack-daemon` provisions `[python_env]` inside an end-user sandbox (`crates/jetpack-daemon/src/python.rs`), it automatically materializes the embedded `jetpack-sdk` wheel/module into `<app_dir>/.venv` offline without requiring PyPI network access.
 
 ## 1. Connecting via `JetPackClient`
 
@@ -1699,7 +1758,7 @@ JETPACK_LOG_LEVEL = "info"
 | `env` | `map<string, string>` | No | Sanitized env vars. Rejects `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `DYLD_LIBRARY_PATH`, `DYLD_FRAMEWORK_PATH`, `PYTHONINSPECT`, `PYTHONPATH`. |
 | `working_dir` | `string` | No | Optional relative working directory. |
 | `ipc_transport` | `string` | No | `"auto"` (default), `"unix_socket"`, or `"named_pipe"`. |
-| `timeout_secs` | `u64` | No | Optional idle/execution timeout in seconds. |
+| `timeout_secs` | `u64` | No | Optional positive hint (must be `> 0` if set); workers stay running until explicitly stopped or session/daemon shutdown. |
 | `graceful_shutdown_secs` | `u64` | No | Grace period before `SIGKILL`/`TerminateProcess` (default `10`, must be `> 0`). |
 
 ---
@@ -1868,6 +1927,96 @@ jetpack-daemon --sign-catalog crates/jetpack-daemon/assets/catalog.signed.json -
 | `--full-e2e-smoke-test` | Run the full end-to-end orchestrator, sandbox, GPU worker, and WebSocket integration test. |
 | `--background` | Hidden internal flag omitted from `--help`; passed by OS autostart entries (`LaunchAgents`, `HKCU\...\Run`, XDG `.desktop`) to suppress auto-opening the Control Center window at OS login. |
 | `--cleanup-old-binary <path>` | Hidden internal post-update flag spawned by the self-updater; validates a `.old` suffix and removes the previous binary or `.app.old` bundle asynchronously (`10 × 200ms` retries). |
+
+---
+
+---
+url: https://jetpack-desktop.github.io/publishing/sdk-publishing.md
+description: >-
+  Build, verify in isolated consumers, synchronize versions, and publish
+  @jetpack/client (NPM) and jetpack-sdk (PyPI).
+---
+
+# SDK Publishing (NPM & PyPI)
+
+Maintainers can build, verify in clean isolated environments, synchronize versions, and publish both official JetPack SDKs using repeatable user-space `Makefile` commands:
+
+* **Frontend SDK (`@jetpack/client`)** — `web/packages/jetpack-client`, bundling compiled `jetpack-wasm` (`crates/jetpack-wasm`) into `wasm/` and re-exporting it via `@jetpack/client/wasm` so external consumers require zero manual WASM path setup.
+* **Python Worker SDK (`jetpack-sdk`)** — `sdks/python`, built with `hatchling` (`sdist` + `py3-none-any` wheel) with zero mandatory dependencies (`dependencies = []`) and optional `msgpack` acceleration (`jetpack-sdk[msgpack]`).
+
+See [Frontend Quickstart](/sdk/frontend/quickstart) and [Python Worker SDK](/sdk/worker/python-sdk) for consumer usage.
+
+## 1. Build Both SDKs (`make sdk-build`)
+
+```bash
+make sdk-build
+```
+
+`make sdk-build` executes in user space:
+
+1. Compiles `crates/jetpack-wasm` via `wasm-pack --target web` (`make wasm`).
+2. Copies compiled WASM glue and binaries (`jetpack_wasm.js`, `jetpack_wasm.d.ts`, `jetpack_wasm_bg.wasm`, `jetpack_wasm_bg.wasm.d.ts`) into `web/packages/jetpack-client/wasm/` and compiles TypeScript to `dist/`.
+3. Cleans `sdks/python/dist/` and builds fresh `.tar.gz` (`sdist`) and `.whl` (`wheel`) packages via `uv build --directory sdks/python` (or `python3 -m build`).
+
+## 2. Verify Packaging & Isolated Consumers (`make sdk-check`)
+
+```bash
+make sdk-check
+```
+
+`make sdk-check` runs `make sdk-build` and executes `scripts/sdk_check.sh`, verifying:
+
+1. **Version Parity**: `@jetpack/client` (`package.json`), `jetpack-sdk` (`pyproject.toml` PEP 440), and `EMBEDDED_JETPACK_SDK_VERSION` (`crates/jetpack-daemon/src/python.rs`) match.
+2. **TypeScript SDK Unit Tests & Tarball Inspection**: Runs `npm --prefix web/packages/jetpack-client test`, packs the `.tgz`, and verifies `dist/`, `wasm/`, `README.md`, and `LICENSE` are present without leaking `src/`, `tests/`, or `node_modules/`.
+3. **Isolated Vite + TypeScript Consumer Smoke Check**: Installs the packed `.tgz` into a fresh temporary Vite + TypeScript project, verifies `tsc --noEmit` and `vite build` emit `jetpack_wasm_bg-*.wasm` into `dist/assets/`, and confirms `vite dev` serves `/node_modules/@jetpack/client/wasm/jetpack_wasm_bg.wasm` with `200 OK` and `application/wasm`.
+4. **Python Metadata & Isolated Venv Check**: Runs `twine check sdks/python/dist/*`, inspects `.whl` contents (including `jetpack_sdk/py.typed`), installs the wheel into a clean temporary `uv venv` without host site-packages, and passes `sdks/python/tests`.
+
+## 3. Version Synchronization (`scripts/sync_version.sh`)
+
+Before tagging a release, synchronize all workspace and SDK manifests from a single semantic version or tag:
+
+```bash
+bash scripts/sync_version.sh v0.2.0
+```
+
+This updates `Cargo.toml`, `crates/jetpack-daemon/assets/Info.plist`, `web/package.json`, `web/packages/jetpack-client/package.json`, `sdks/python/pyproject.toml` (converting SemVer pre-release tags such as `-alpha.1` to PEP 440 `a1`), and `EMBEDDED_JETPACK_SDK_VERSION` in `crates/jetpack-daemon/src/python.rs`.
+
+## 4. Dry-Run & Live Publishing (`make sdk-publish`)
+
+Always run a non-mutating dry run before publishing:
+
+```bash
+make sdk-publish DRY_RUN=1
+```
+
+`DRY_RUN=1` validates the full `make sdk-check` suite, runs `npm publish ./web/packages/jetpack-client --access public --dry-run`, checks `sdks/python/dist/*` with `twine check`, and skips live uploads (even on a dirty git tree).
+
+When publishing live from a clean git working tree:
+
+| Command | Target Registry | Notes |
+| :--- | :--- | :--- |
+| `make sdk-publish` | NPM + PyPI | Fails if git tree is dirty unless `ALLOW_DIRTY=1` is set |
+| `make sdk-publish-npm` | NPM only (`@jetpack/client`) | Runs `sdk-check` first |
+| `make sdk-publish-pypi` | PyPI only (`jetpack-sdk`) | Runs `sdk-check` first |
+
+### Authentication Options
+
+* **NPM (`@jetpack/client`)**: Set `NPM_TOKEN` (or `NODE_AUTH_TOKEN`)—written to an ephemeral `0600` temporary config deleted on exit without modifying `~/.npmrc`—or log in beforehand via `npm login`.
+* **PyPI (`jetpack-sdk`)**: Set `UV_PUBLISH_TOKEN` (or `PYPI_API_TOKEN` / `TWINE_PASSWORD`), or rely on `~/.pypirc` / an interactive prompt.
+
+```bash
+# Non-interactive CI / token-based publish
+NPM_TOKEN=... UV_PUBLISH_TOKEN=... make sdk-publish
+
+# Allow publishing while testing uncommitted local edits (not recommended for releases)
+ALLOW_DIRTY=1 make sdk-publish-npm
+```
+
+## 5. GitHub Actions Release Integration
+
+`.github/workflows/release.yml` runs `sdk-check` on every tag (`v*`) or manual `workflow_dispatch` run, gating public desktop releases on SDK packaging verification. When `NPM_TOKEN` and/or `PYPI_API_TOKEN` repository secrets are configured, the `publish-sdks` job publishes both packages automatically after release artifacts succeed; if either secret is omitted, the step logs an informational notice and skips cleanly without failing binary or GitHub Pages releases.
+
+See also [CLI Tools Reference](/publishing/cli-tools) and [Store Submission & Catalog Signing](/publishing/store-submission).
 
 ---
 
